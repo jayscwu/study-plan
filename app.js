@@ -25,7 +25,6 @@ const el = {
   mainNav: document.getElementById("main-nav"),
 
   courseName: document.getElementById("course-name"),
-  lastUpdated: document.getElementById("last-updated"),
   refreshBtn: document.getElementById("refresh-btn"),
   retryBtn: document.getElementById("retry-btn"),
   loadingState: document.getElementById("loading-state"),
@@ -59,6 +58,8 @@ const el = {
   reqStatusSelect: document.getElementById("req-status-select"),
   reqSubmitBtn: document.getElementById("req-submit-btn"),
   reqFormMessage: document.getElementById("req-form-message"),
+  reqSearchInput: document.getElementById("req-search-input"),
+  reqSearchResults: document.getElementById("req-search-results"),
 
   statTotal: document.getElementById("stat-total"),
   statDone: document.getElementById("stat-done"),
@@ -137,18 +138,34 @@ function renderLoginUsers(users) {
       <p class="login-user-name">${escapeHtml(u.name)}</p>
       <p class="login-user-role">${escapeHtml(u.role)}</p>
     `;
-    card.addEventListener("click", () => selectLoginUser(u));
+    card.addEventListener("click", () => {
+      if (card.classList.contains("expanded")) return;
+      selectLoginUser(u, card);
+    });
     el.loginUsers.appendChild(card);
   }
 }
 
-function selectLoginUser(user) {
+function selectLoginUser(user, card) {
   selectedLoginUser = user;
   el.loginSelectedName.textContent = `${user.name}（${user.role}）`;
-  el.loginPinPanel.classList.remove("hidden");
   el.loginError.classList.add("hidden");
   el.loginPinInput.value = "";
+
+  [...el.loginUsers.children].forEach((c) => c.classList.toggle("hidden", c !== card));
+  card.classList.add("expanded");
+  card.appendChild(el.loginPinPanel);
+  el.loginPinPanel.classList.remove("hidden");
   el.loginPinInput.focus();
+}
+
+function resetLoginSelection() {
+  selectedLoginUser = null;
+  el.loginPinPanel.classList.add("hidden");
+  el.loginView.appendChild(el.loginPinPanel);
+  [...el.loginUsers.children].forEach((c) => {
+    c.classList.remove("hidden", "expanded");
+  });
 }
 
 function submitLogin() {
@@ -177,10 +194,7 @@ function submitLogin() {
     });
 }
 
-el.loginBackBtn.addEventListener("click", () => {
-  selectedLoginUser = null;
-  el.loginPinPanel.classList.add("hidden");
-});
+el.loginBackBtn.addEventListener("click", resetLoginSelection);
 
 el.loginSubmitBtn.addEventListener("click", submitLogin);
 el.loginPinInput.addEventListener("keydown", (e) => {
@@ -307,7 +321,8 @@ function getStudentTasks() {
 
 function renderAll() {
   el.courseName.textContent = currentStudent ? `${currentStudent} 的學習計畫` : "";
-  el.lastUpdated.textContent = `最後更新：${new Date().toLocaleString("zh-TW", { hour12: false })}`;
+  const lastUpdated = new Date().toLocaleString("zh-TW", { hour12: false });
+  el.currentUser.textContent = `${session.name}（${session.role}）・最後更新 ${lastUpdated}`;
 
   const studentTasks = getStudentTasks();
   renderSummary(studentTasks);
@@ -458,6 +473,7 @@ function buildTaskListMobile(tasks) {
     item.className = "task-list-item";
     item.innerHTML = `
       <div class="task-list-item-text">
+        <div class="task-list-item-course">${escapeHtml(t.course)}</div>
         <div class="task-list-item-chapter">${escapeHtml(t.chapter)}</div>
         <div class="task-list-item-type">${escapeHtml(t.task)}</div>
       </div>
@@ -682,12 +698,47 @@ function renderRequestForm() {
   el.reqCurrentStatus.classList.add("hidden");
   el.reqFormMessage.classList.add("hidden");
   el.reqStatusSelect.value = "";
+  el.reqSearchInput.value = "";
+  el.reqSearchResults.innerHTML = "";
+  el.reqSearchResults.classList.add("hidden");
 }
+
+el.reqSearchInput.addEventListener("input", () => {
+  const query = el.reqSearchInput.value.trim().toLowerCase();
+  el.reqSearchResults.innerHTML = "";
+  if (!query) {
+    el.reqSearchResults.classList.add("hidden");
+    return;
+  }
+  const matches = allTasks
+    .filter((t) => !t.pendingStatus)
+    .filter((t) => `${t.course} ${t.subject} ${t.chapter} ${t.task}`.toLowerCase().includes(query))
+    .slice(0, 8);
+
+  if (matches.length === 0) {
+    el.reqSearchResults.innerHTML = '<p class="no-results">找不到符合的任務</p>';
+    el.reqSearchResults.classList.remove("hidden");
+    return;
+  }
+
+  matches.forEach((t) => {
+    const item = document.createElement("div");
+    item.className = "req-search-result-item";
+    item.innerHTML = `${escapeHtml(t.course)}・${escapeHtml(t.subject)}・${escapeHtml(t.chapter)}・${escapeHtml(t.task)} ${statusBadge(t.status)}`;
+    item.addEventListener("click", () => {
+      selectTaskFully(t);
+      el.reqSearchInput.value = "";
+      el.reqSearchResults.innerHTML = "";
+      el.reqSearchResults.classList.add("hidden");
+    });
+    el.reqSearchResults.appendChild(item);
+  });
+  el.reqSearchResults.classList.remove("hidden");
+});
 
 let selectedRequestTask = null;
 
-el.reqCourseSelect.addEventListener("change", () => {
-  const course = el.reqCourseSelect.value;
+function populateSubjects(course) {
   el.reqChapterSelect.innerHTML = '<option value="">選擇章節</option>';
   el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
   el.reqSubjectSelect.disabled = !course;
@@ -700,11 +751,9 @@ el.reqCourseSelect.addEventListener("change", () => {
   }
   const subjects = [...new Set(allTasks.filter((t) => t.course === course).map((t) => t.subject))];
   fillSelect(el.reqSubjectSelect, subjects, "選擇科目");
-});
+}
 
-el.reqSubjectSelect.addEventListener("change", () => {
-  const course = el.reqCourseSelect.value;
-  const subject = el.reqSubjectSelect.value;
+function populateChapters(course, subject) {
   el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
   el.reqChapterSelect.disabled = !subject;
   el.reqTaskSelect.disabled = true;
@@ -715,12 +764,9 @@ el.reqSubjectSelect.addEventListener("change", () => {
   }
   const chapters = [...new Set(allTasks.filter((t) => t.course === course && t.subject === subject).map((t) => t.chapter))];
   fillSelect(el.reqChapterSelect, chapters, "選擇章節");
-});
+}
 
-el.reqChapterSelect.addEventListener("change", () => {
-  const course = el.reqCourseSelect.value;
-  const subject = el.reqSubjectSelect.value;
-  const chapter = el.reqChapterSelect.value;
+function populateTasks(course, subject, chapter) {
   el.reqTaskSelect.disabled = !chapter;
   resetTaskSelection();
   if (!chapter) {
@@ -739,10 +785,9 @@ el.reqChapterSelect.addEventListener("change", () => {
   } else {
     el.reqFormMessage.classList.add("hidden");
   }
-});
+}
 
-el.reqTaskSelect.addEventListener("change", () => {
-  const seq = el.reqTaskSelect.value;
+function selectTaskBySeq(seq) {
   resetTaskSelection();
   if (!seq) return;
   selectedRequestTask = allTasks.find((t) => String(t.seq) === seq) || null;
@@ -754,7 +799,31 @@ el.reqTaskSelect.addEventListener("change", () => {
     if (!opt.value) return;
     opt.hidden = opt.value === selectedRequestTask.status;
   });
-});
+}
+
+function selectTaskFully(task) {
+  el.reqCourseSelect.value = task.course;
+  populateSubjects(task.course);
+  el.reqSubjectSelect.value = task.subject;
+  populateChapters(task.course, task.subject);
+  el.reqChapterSelect.value = task.chapter;
+  populateTasks(task.course, task.subject, task.chapter);
+  el.reqTaskSelect.value = String(task.seq);
+  selectTaskBySeq(String(task.seq));
+  el.reqStatusSelect.focus();
+}
+
+el.reqCourseSelect.addEventListener("change", () => populateSubjects(el.reqCourseSelect.value));
+
+el.reqSubjectSelect.addEventListener("change", () =>
+  populateChapters(el.reqCourseSelect.value, el.reqSubjectSelect.value)
+);
+
+el.reqChapterSelect.addEventListener("change", () =>
+  populateTasks(el.reqCourseSelect.value, el.reqSubjectSelect.value, el.reqChapterSelect.value)
+);
+
+el.reqTaskSelect.addEventListener("change", () => selectTaskBySeq(el.reqTaskSelect.value));
 
 el.reqStatusSelect.addEventListener("change", () => {
   el.reqSubmitBtn.disabled = !selectedRequestTask || !el.reqStatusSelect.value;

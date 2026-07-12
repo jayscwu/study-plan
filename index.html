@@ -39,14 +39,11 @@
           <p id="course-name" class="course-name">載入中...</p>
         </div>
         <div class="header-actions">
-          <span id="current-user" class="current-user"></span>
-          <button id="refresh-btn" class="refresh-btn" title="重新整理資料">
-            <span class="refresh-icon">⟳</span> 重新整理
-          </button>
-          <button id="logout-btn" class="secondary-btn">登出</button>
+          <button id="refresh-btn" class="icon-btn" title="重新整理資料">⟳</button>
+          <button id="logout-btn" class="icon-btn" title="登出">⏻</button>
         </div>
       </div>
-      <p id="last-updated" class="last-updated"></p>
+      <p id="current-user" class="current-user"></p>
 
       <nav class="main-nav" id="main-nav">
         <button class="nav-tab active" data-view="dashboard">儀表板</button>
@@ -155,6 +152,8 @@
         <!-- 學生：提出申請 -->
         <section id="submit-request-panel" class="requests-panel hidden">
           <h2 class="panel-title">申請變更狀態</h2>
+          <input type="search" id="req-search-input" class="search-input req-search-input" placeholder="搜尋課程、科目、章節或任務...">
+          <div id="req-search-results" class="requests-list req-search-results hidden"></div>
           <div class="request-form">
             <select id="req-course-select" class="student-select"><option value="">選擇課程</option></select>
             <select id="req-subject-select" class="student-select" disabled><option value="">選擇科目</option></select>
