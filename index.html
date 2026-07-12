@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>學習計畫進度追蹤</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <div class="header-top">
+      <div>
+        <h1>學習計畫進度追蹤</h1>
+        <p id="course-name" class="course-name">載入中...</p>
+      </div>
+      <button id="refresh-btn" class="refresh-btn" title="重新整理資料">
+        <span class="refresh-icon">⟳</span> 重新整理
+      </button>
+    </div>
+    <p id="last-updated" class="last-updated"></p>
+  </header>
+
+  <main id="main-content">
+
+    <section id="loading-state" class="state-panel">
+      <div class="spinner"></div>
+      <p>正在讀取學習計畫資料...</p>
+    </section>
+
+    <section id="error-state" class="state-panel hidden">
+      <p class="error-icon">⚠️</p>
+      <p id="error-message">讀取資料失敗，請確認網路連線或稍後再試。</p>
+      <button id="retry-btn" class="retry-btn">重試</button>
+    </section>
+
+    <section id="data-view" class="hidden">
+
+      <section class="summary-card">
+        <div class="summary-numbers">
+          <div class="summary-item total">
+            <span class="summary-value" id="stat-total">0</span>
+            <span class="summary-label">總任務數</span>
+          </div>
+          <div class="summary-item done">
+            <span class="summary-value" id="stat-done">0</span>
+            <span class="summary-label">已完成</span>
+          </div>
+          <div class="summary-item progress">
+            <span class="summary-value" id="stat-progress">0</span>
+            <span class="summary-label">學習中</span>
+          </div>
+          <div class="summary-item todo">
+            <span class="summary-value" id="stat-todo">0</span>
+            <span class="summary-label">待執行</span>
+          </div>
+        </div>
+        <div class="overall-progress">
+          <div class="overall-progress-labels">
+            <span>整體完成度</span>
+            <span id="overall-percent">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div id="overall-progress-bar" class="progress-bar-fill" style="width:0%"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="controls">
+        <div class="status-filter" id="status-filter">
+          <button class="filter-chip active" data-status="all">全部</button>
+          <button class="filter-chip" data-status="0">待執行</button>
+          <button class="filter-chip" data-status="1">學習中</button>
+          <button class="filter-chip" data-status="2">已完成</button>
+        </div>
+        <input type="search" id="search-input" class="search-input" placeholder="搜尋章節、科目或任務...">
+      </section>
+
+      <section id="subjects-container" class="subjects-container"></section>
+
+      <p id="no-results" class="no-results hidden">找不到符合條件的項目。</p>
+
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>資料來源：Google Sheet ・ 僅供學習進度檢視</p>
+  </footer>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
