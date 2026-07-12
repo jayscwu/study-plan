@@ -47,6 +47,11 @@
         </div>
       </div>
       <p id="last-updated" class="last-updated"></p>
+
+      <nav class="main-nav" id="main-nav">
+        <button class="nav-tab active" data-view="dashboard">儀表板</button>
+        <button class="nav-tab" data-view="requests">申請審核</button>
+      </nav>
     </header>
 
     <main id="main-content">
@@ -62,26 +67,13 @@
         <button id="retry-btn" class="retry-btn">重試</button>
       </section>
 
-      <section id="data-view" class="hidden">
+      <!-- 儀表板頁籤 -->
+      <section id="view-dashboard" class="hidden">
 
         <!-- 家長：學生切換 -->
         <section id="student-toolbar" class="student-toolbar hidden">
           <label for="student-select">檢視學生：</label>
           <select id="student-select" class="student-select"></select>
-        </section>
-
-        <!-- 家長：待審核申請 -->
-        <section id="requests-panel" class="requests-panel hidden">
-          <h2 class="panel-title">待審核申請</h2>
-          <div id="pending-requests-list" class="requests-list"></div>
-          <p id="no-pending-requests" class="no-results hidden">目前沒有待審核的申請。</p>
-        </section>
-
-        <!-- 學生：我的申請紀錄 -->
-        <section id="my-requests-panel" class="requests-panel hidden">
-          <h2 class="panel-title">我的申請紀錄</h2>
-          <div id="my-requests-list" class="requests-list"></div>
-          <p id="no-my-requests" class="no-results hidden">目前沒有申請紀錄。</p>
         </section>
 
         <section class="summary-card">
@@ -122,11 +114,79 @@
             <button class="filter-chip" data-status="2">已完成</button>
           </div>
           <input type="search" id="search-input" class="search-input" placeholder="搜尋章節、科目或任務...">
+          <div class="mode-toggle" id="mode-toggle">
+            <button class="mode-toggle-btn active" data-mode="list">列表</button>
+            <button class="mode-toggle-btn" data-mode="calendar">日曆</button>
+          </div>
         </section>
 
-        <section id="subjects-container" class="subjects-container"></section>
+        <!-- 列表模式 -->
+        <section id="list-mode">
+          <section id="subjects-container" class="subjects-container"></section>
+          <p id="no-results" class="no-results hidden">找不到符合條件的項目。</p>
+        </section>
 
-        <p id="no-results" class="no-results hidden">找不到符合條件的項目。</p>
+        <!-- 日曆模式 -->
+        <section id="calendar-mode" class="hidden">
+          <div class="calendar-header">
+            <button id="calendar-prev" class="secondary-btn">‹ 上個月</button>
+            <h2 id="calendar-month-label" class="calendar-month-label"></h2>
+            <button id="calendar-next" class="secondary-btn">下個月 ›</button>
+          </div>
+          <div id="calendar-grid" class="calendar-grid"></div>
+
+          <section id="calendar-day-detail" class="requests-panel hidden">
+            <h2 class="panel-title" id="calendar-day-title"></h2>
+            <div id="calendar-day-list" class="task-list-mobile"></div>
+          </section>
+
+          <section id="unscheduled-panel" class="requests-panel">
+            <h2 class="panel-title">未排定日期</h2>
+            <div id="unscheduled-list" class="task-list-mobile"></div>
+            <p id="no-unscheduled" class="no-results hidden">沒有未排定日期的任務。</p>
+          </section>
+        </section>
+
+      </section>
+
+      <!-- 申請審核頁籤 -->
+      <section id="view-requests" class="hidden">
+
+        <!-- 學生：提出申請 -->
+        <section id="submit-request-panel" class="requests-panel hidden">
+          <h2 class="panel-title">申請變更狀態</h2>
+          <div class="request-form">
+            <select id="req-course-select" class="student-select"><option value="">選擇課程</option></select>
+            <select id="req-subject-select" class="student-select" disabled><option value="">選擇科目</option></select>
+            <select id="req-chapter-select" class="student-select" disabled><option value="">選擇章節</option></select>
+            <select id="req-task-select" class="student-select" disabled><option value="">選擇任務</option></select>
+          </div>
+          <div id="req-current-status" class="request-current-status hidden"></div>
+          <div class="request-form">
+            <select id="req-status-select" class="student-select" disabled>
+              <option value="">選擇新狀態</option>
+              <option value="0">待執行</option>
+              <option value="1">學習中</option>
+              <option value="2">已完成</option>
+            </select>
+            <button id="req-submit-btn" class="primary-btn" disabled>送出申請</button>
+          </div>
+          <p id="req-form-message" class="login-error hidden"></p>
+        </section>
+
+        <!-- 家長：待審核申請 -->
+        <section id="requests-panel" class="requests-panel hidden">
+          <h2 class="panel-title">待審核申請</h2>
+          <div id="pending-requests-list" class="requests-list"></div>
+          <p id="no-pending-requests" class="no-results hidden">目前沒有待審核的申請。</p>
+        </section>
+
+        <!-- 學生：我的申請紀錄 -->
+        <section id="my-requests-panel" class="requests-panel hidden">
+          <h2 class="panel-title">我的申請紀錄</h2>
+          <div id="my-requests-list" class="requests-list"></div>
+          <p id="no-my-requests" class="no-results hidden">目前沒有申請紀錄。</p>
+        </section>
 
       </section>
 
@@ -138,15 +198,6 @@
 
   </div>
 
-</div>
-
-<!-- 申請變更狀態的選單（共用一個，動態定位） -->
-<div id="status-picker" class="status-picker hidden">
-  <p class="status-picker-title">申請變更為：</p>
-  <button class="status-picker-option" data-status="0">待執行</button>
-  <button class="status-picker-option" data-status="1">學習中</button>
-  <button class="status-picker-option" data-status="2">已完成</button>
-  <button class="status-picker-cancel" id="status-picker-cancel">取消</button>
 </div>
 
 <script src="api.js"></script>

@@ -26,6 +26,18 @@ function statusCode(fullLabel) {
   return match ? match[1] : "0";
 }
 
+function formatTaskDate(value, timeZone) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === "[object Date]") {
+    return Utilities.formatDate(value, timeZone, "yyyy-MM-dd");
+  }
+  const parsed = new Date(value);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, timeZone, "yyyy-MM-dd");
+  }
+  return null;
+}
+
 function getSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(name);
@@ -121,6 +133,7 @@ function handleTasks(name, role) {
     filtered = taskRows.filter((r) => String(r["學生"]).trim() === String(name).trim());
   }
 
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
   const tasks = filtered.map((r) => ({
     seq: r["項次"],
     student: r["學生"],
@@ -130,6 +143,7 @@ function handleTasks(name, role) {
     task: r["任務"],
     status: statusCode(r["狀態"]),
     pendingStatus: pendingBySeq[String(r["項次"])] || null,
+    date: formatTaskDate(r["預計學習日期"], tz),
   }));
 
   return { ok: true, tasks };

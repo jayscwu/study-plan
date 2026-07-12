@@ -167,6 +167,32 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* Main nav */
+
+.main-nav {
+  display: flex;
+  gap: 6px;
+  margin-top: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.nav-tab {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  padding: 10px 4px;
+  margin-right: 20px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.nav-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
 /* Login view */
 
 .login-view {
@@ -369,75 +395,6 @@ body {
   cursor: pointer;
 }
 
-/* Task action / pending badge */
-
-.task-action-btn {
-  border: 1px solid var(--color-primary);
-  background: none;
-  color: var(--color-primary);
-  border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 0.78rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.pending-badge {
-  display: inline-block;
-  font-size: 0.75rem;
-  color: var(--color-progress-text);
-  background: var(--color-progress-bg);
-  border-radius: 999px;
-  padding: 3px 10px;
-  white-space: nowrap;
-}
-
-/* Status picker popover */
-
-.status-picker {
-  position: fixed;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  padding: 12px;
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 160px;
-}
-
-.status-picker-title {
-  margin: 0 0 4px;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
-}
-
-.status-picker-option {
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text);
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  text-align: left;
-}
-
-.status-picker-option:hover {
-  border-color: var(--color-primary);
-}
-
-.status-picker-cancel {
-  border: none;
-  background: none;
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-  cursor: pointer;
-  padding: 6px 0 0;
-}
-
 /* State panels */
 
 .state-panel {
@@ -591,6 +548,27 @@ body {
   border-color: var(--color-primary);
 }
 
+.mode-toggle {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mode-toggle-btn {
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  padding: 6px 16px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.mode-toggle-btn.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
 /* Subjects */
 
 .subjects-container {
@@ -701,6 +679,13 @@ body {
   display: none;
 }
 
+#calendar-day-list,
+#unscheduled-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .status-badge {
   display: inline-block;
   padding: 3px 10px;
@@ -761,6 +746,99 @@ body {
 
 .course-block .subjects-container {
   gap: 12px;
+}
+
+/* Calendar */
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.calendar-month-label {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  padding-bottom: 4px;
+}
+
+.calendar-day {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  min-height: 72px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.calendar-day.empty {
+  background: none;
+  border: none;
+  cursor: default;
+}
+
+.calendar-day.today {
+  border-color: var(--color-primary);
+}
+
+.calendar-day.selected {
+  background: var(--color-todo-bg);
+}
+
+.calendar-day-number {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.calendar-day-chip {
+  font-size: 0.68rem;
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-day-more {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+/* Request form */
+
+.request-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.request-form .student-select {
+  flex: 1;
+  min-width: 140px;
+}
+
+.request-current-status {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin: -4px 0 12px;
 }
 
 .no-results {
@@ -844,5 +922,26 @@ body {
 
   .request-item-actions {
     justify-content: flex-end;
+  }
+
+  .calendar-grid {
+    gap: 4px;
+  }
+
+  .calendar-day {
+    min-height: 52px;
+    padding: 4px;
+  }
+
+  .calendar-day-chip {
+    font-size: 0.6rem;
+  }
+
+  .controls {
+    align-items: stretch;
+  }
+
+  .request-form .student-select {
+    min-width: 100%;
   }
 }

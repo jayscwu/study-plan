@@ -4,6 +4,8 @@ const STATUS_LABELS = {
   "2": "已完成",
 };
 
+const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+
 const SESSION_KEY = "studyplan_session";
 
 const el = {
@@ -20,6 +22,7 @@ const el = {
   appView: document.getElementById("app-view"),
   currentUser: document.getElementById("current-user"),
   logoutBtn: document.getElementById("logout-btn"),
+  mainNav: document.getElementById("main-nav"),
 
   courseName: document.getElementById("course-name"),
   lastUpdated: document.getElementById("last-updated"),
@@ -28,10 +31,16 @@ const el = {
   loadingState: document.getElementById("loading-state"),
   errorState: document.getElementById("error-state"),
   errorMessage: document.getElementById("error-message"),
-  dataView: document.getElementById("data-view"),
+
+  viewDashboard: document.getElementById("view-dashboard"),
+  viewRequests: document.getElementById("view-requests"),
 
   studentToolbar: document.getElementById("student-toolbar"),
   studentSelect: document.getElementById("student-select"),
+
+  modeToggle: document.getElementById("mode-toggle"),
+  listMode: document.getElementById("list-mode"),
+  calendarMode: document.getElementById("calendar-mode"),
 
   requestsPanel: document.getElementById("requests-panel"),
   pendingRequestsList: document.getElementById("pending-requests-list"),
@@ -40,6 +49,16 @@ const el = {
   myRequestsPanel: document.getElementById("my-requests-panel"),
   myRequestsList: document.getElementById("my-requests-list"),
   noMyRequests: document.getElementById("no-my-requests"),
+
+  submitRequestPanel: document.getElementById("submit-request-panel"),
+  reqCourseSelect: document.getElementById("req-course-select"),
+  reqSubjectSelect: document.getElementById("req-subject-select"),
+  reqChapterSelect: document.getElementById("req-chapter-select"),
+  reqTaskSelect: document.getElementById("req-task-select"),
+  reqCurrentStatus: document.getElementById("req-current-status"),
+  reqStatusSelect: document.getElementById("req-status-select"),
+  reqSubmitBtn: document.getElementById("req-submit-btn"),
+  reqFormMessage: document.getElementById("req-form-message"),
 
   statTotal: document.getElementById("stat-total"),
   statDone: document.getElementById("stat-done"),
@@ -52,8 +71,15 @@ const el = {
   searchInput: document.getElementById("search-input"),
   noResults: document.getElementById("no-results"),
 
-  statusPicker: document.getElementById("status-picker"),
-  statusPickerCancel: document.getElementById("status-picker-cancel"),
+  calendarPrev: document.getElementById("calendar-prev"),
+  calendarNext: document.getElementById("calendar-next"),
+  calendarMonthLabel: document.getElementById("calendar-month-label"),
+  calendarGrid: document.getElementById("calendar-grid"),
+  calendarDayDetail: document.getElementById("calendar-day-detail"),
+  calendarDayTitle: document.getElementById("calendar-day-title"),
+  calendarDayList: document.getElementById("calendar-day-list"),
+  unscheduledList: document.getElementById("unscheduled-list"),
+  noUnscheduled: document.getElementById("no-unscheduled"),
 };
 
 let session = loadSession();
@@ -62,8 +88,12 @@ let allRequests = [];
 let currentStudent = null;
 let currentStatusFilter = "all";
 let currentSearch = "";
-let openPickerSeq = null;
 let selectedLoginUser = null;
+
+let currentView = "dashboard";
+let dashboardMode = "list";
+let calendarDate = new Date();
+let selectedCalendarDay = null;
 
 // ---------- Session ----------
 
@@ -172,6 +202,7 @@ function enterApp() {
   el.studentToolbar.classList.toggle("hidden", session.role !== "家長");
   el.requestsPanel.classList.toggle("hidden", session.role !== "家長");
   el.myRequestsPanel.classList.toggle("hidden", session.role !== "學生");
+  el.submitRequestPanel.classList.toggle("hidden", session.role !== "學生");
   loadData();
 }
 
@@ -181,6 +212,28 @@ function init() {
   } else {
     initLogin();
   }
+}
+
+// ---------- Nav ----------
+
+el.mainNav.addEventListener("click", (e) => {
+  const btn = e.target.closest(".nav-tab");
+  if (!btn) return;
+  setCurrentView(btn.dataset.view);
+});
+
+function setCurrentView(view) {
+  currentView = view;
+  [...el.mainNav.children].forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
+  applyViewVisibility();
+}
+
+function applyViewVisibility() {
+  const loadingHidden = el.loadingState.classList.contains("hidden");
+  const errorHidden = el.errorState.classList.contains("hidden");
+  const dataLoaded = loadingHidden && errorHidden;
+  el.viewDashboard.classList.toggle("hidden", !(dataLoaded && currentView === "dashboard"));
+  el.viewRequests.classList.toggle("hidden", !(dataLoaded && currentView === "requests"));
 }
 
 // ---------- Data loading ----------
@@ -223,13 +276,15 @@ el.studentSelect.addEventListener("change", (e) => {
 function showLoading() {
   el.loadingState.classList.remove("hidden");
   el.errorState.classList.add("hidden");
-  el.dataView.classList.add("hidden");
+  el.viewDashboard.classList.add("hidden");
+  el.viewRequests.classList.add("hidden");
 }
 
 function showError(err) {
   el.loadingState.classList.add("hidden");
   el.errorState.classList.remove("hidden");
-  el.dataView.classList.add("hidden");
+  el.viewDashboard.classList.add("hidden");
+  el.viewRequests.classList.add("hidden");
   el.errorMessage.textContent = err && err.message
     ? `讀取資料失敗（${err.message}），請確認網路連線或稍後再試。`
     : "讀取資料失敗，請確認網路連線或稍後再試。";
@@ -238,7 +293,7 @@ function showError(err) {
 function showData() {
   el.loadingState.classList.add("hidden");
   el.errorState.classList.add("hidden");
-  el.dataView.classList.remove("hidden");
+  applyViewVisibility();
 }
 
 // ---------- Rendering ----------
@@ -257,7 +312,9 @@ function renderAll() {
   const studentTasks = getStudentTasks();
   renderSummary(studentTasks);
   renderSubjects();
+  renderCalendar();
   renderRequestPanels();
+  renderRequestForm();
 }
 
 function renderSummary(tasks) {
@@ -293,6 +350,8 @@ function groupBy(tasks, key) {
   }
   return map;
 }
+
+// ---------- List mode ----------
 
 function renderSubjects() {
   const filtered = getFilteredTasks();
@@ -344,7 +403,7 @@ function buildSubjectCard(subject, tasks) {
   const percent = total ? Math.round((done / total) * 100) : 0;
 
   const card = document.createElement("section");
-  card.className = "subject-card";
+  card.className = "subject-card collapsed";
 
   const header = document.createElement("div");
   header.className = "subject-header";
@@ -370,12 +429,11 @@ function buildSubjectCard(subject, tasks) {
 }
 
 function buildTaskTable(tasks) {
-  const showAction = session.role === "學生";
   const table = document.createElement("table");
   table.className = "task-table";
   table.innerHTML = `
     <thead>
-      <tr><th>章節</th><th>任務</th><th>狀態</th>${showAction ? "<th></th>" : ""}</tr>
+      <tr><th>章節</th><th>任務</th><th>狀態</th></tr>
     </thead>
     <tbody></tbody>
   `;
@@ -386,16 +444,13 @@ function buildTaskTable(tasks) {
       <td>${escapeHtml(t.chapter)}</td>
       <td>${escapeHtml(t.task)}</td>
       <td>${statusBadge(t.status)}</td>
-      ${showAction ? `<td>${taskActionHtml(t)}</td>` : ""}
     `;
     tbody.appendChild(tr);
-    if (showAction) bindTaskAction(tr, t);
   }
   return table;
 }
 
 function buildTaskListMobile(tasks) {
-  const showAction = session.role === "學生";
   const list = document.createElement("div");
   list.className = "task-list-mobile";
   for (const t of tasks) {
@@ -407,26 +462,10 @@ function buildTaskListMobile(tasks) {
         <div class="task-list-item-type">${escapeHtml(t.task)}</div>
       </div>
       ${statusBadge(t.status)}
-      ${showAction ? taskActionHtml(t) : ""}
     `;
     list.appendChild(item);
-    if (showAction) bindTaskAction(item, t);
   }
   return list;
-}
-
-function taskActionHtml(t) {
-  if (t.pendingStatus) {
-    return `<span class="pending-badge">審核中→${STATUS_LABELS[t.pendingStatus]}</span>`;
-  }
-  return `<button class="task-action-btn" data-seq="${escapeHtml(String(t.seq))}">申請變更</button>`;
-}
-
-function bindTaskAction(container, t) {
-  if (t.pendingStatus) return;
-  const btn = container.querySelector(".task-action-btn");
-  if (!btn) return;
-  btn.addEventListener("click", (e) => openStatusPicker(t, e.currentTarget));
 }
 
 function statusBadge(status) {
@@ -440,52 +479,119 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ---------- Status change request (student) ----------
+// ---------- List / Calendar toggle ----------
 
-function openStatusPicker(task, anchorEl) {
-  openPickerSeq = task.seq;
-  const rect = anchorEl.getBoundingClientRect();
-  const top = Math.min(rect.bottom + 6, window.innerHeight - 160);
-  el.statusPicker.style.top = `${Math.max(8, top)}px`;
-  el.statusPicker.style.left = `${Math.max(8, rect.right - 170)}px`;
-  el.statusPicker.querySelectorAll(".status-picker-option").forEach((opt) => {
-    opt.style.display = opt.dataset.status === task.status ? "none" : "block";
-  });
-  el.statusPicker.classList.remove("hidden");
-}
-
-function closeStatusPicker() {
-  el.statusPicker.classList.add("hidden");
-  openPickerSeq = null;
-}
-
-el.statusPicker.querySelectorAll(".status-picker-option").forEach((opt) => {
-  opt.addEventListener("click", () => {
-    if (openPickerSeq == null) return;
-    const newStatus = opt.dataset.status;
-    const seq = openPickerSeq;
-    closeStatusPicker();
-    Api.submitRequest(session.name, seq, newStatus)
-      .then((res) => {
-        if (!res.ok) {
-          alert(res.error || "申請失敗");
-          return;
-        }
-        loadData();
-      })
-      .catch((err) => alert(`申請失敗（${err.message}）`));
-  });
+el.modeToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".mode-toggle-btn");
+  if (!btn) return;
+  dashboardMode = btn.dataset.mode;
+  [...el.modeToggle.children].forEach((c) => c.classList.toggle("active", c === btn));
+  el.listMode.classList.toggle("hidden", dashboardMode !== "list");
+  el.calendarMode.classList.toggle("hidden", dashboardMode !== "calendar");
+  if (dashboardMode === "calendar") renderCalendar();
 });
 
-el.statusPickerCancel.addEventListener("click", closeStatusPicker);
+// ---------- Calendar mode ----------
 
-document.addEventListener("click", (e) => {
-  if (el.statusPicker.classList.contains("hidden")) return;
-  if (el.statusPicker.contains(e.target) || e.target.closest(".task-action-btn")) return;
-  closeStatusPicker();
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function dateKey(y, m, d) {
+  return `${y}-${pad2(m + 1)}-${pad2(d)}`;
+}
+
+el.calendarPrev.addEventListener("click", () => {
+  calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1);
+  selectedCalendarDay = null;
+  renderCalendar();
 });
 
-// ---------- Request panels ----------
+el.calendarNext.addEventListener("click", () => {
+  calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1);
+  selectedCalendarDay = null;
+  renderCalendar();
+});
+
+function renderCalendar() {
+  if (dashboardMode !== "calendar") return;
+
+  const tasks = getFilteredTasks();
+  const byDate = new Map();
+  const unscheduled = [];
+  for (const t of tasks) {
+    if (!t.date) {
+      unscheduled.push(t);
+      continue;
+    }
+    if (!byDate.has(t.date)) byDate.set(t.date, []);
+    byDate.get(t.date).push(t);
+  }
+
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  el.calendarMonthLabel.textContent = `${year} 年 ${month + 1} 月`;
+
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startWeekday = firstDay.getDay();
+  const today = new Date();
+  const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+
+  el.calendarGrid.innerHTML = "";
+  WEEKDAY_LABELS.forEach((label) => {
+    const cell = document.createElement("div");
+    cell.className = "calendar-weekday";
+    cell.textContent = label;
+    el.calendarGrid.appendChild(cell);
+  });
+
+  for (let i = 0; i < startWeekday; i++) {
+    const empty = document.createElement("div");
+    empty.className = "calendar-day empty";
+    el.calendarGrid.appendChild(empty);
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = dateKey(year, month, d);
+    const dayTasks = byDate.get(key) || [];
+    const cell = document.createElement("div");
+    cell.className = "calendar-day";
+    if (key === todayKey) cell.classList.add("today");
+    if (key === selectedCalendarDay) cell.classList.add("selected");
+
+    const shown = dayTasks.slice(0, 3);
+    const more = dayTasks.length - shown.length;
+    cell.innerHTML = `
+      <span class="calendar-day-number">${d}</span>
+      ${shown.map((t) => `<span class="calendar-day-chip status-badge status-${t.status}">${escapeHtml(t.chapter)}</span>`).join("")}
+      ${more > 0 ? `<span class="calendar-day-more">+${more}</span>` : ""}
+    `;
+    cell.addEventListener("click", () => {
+      selectedCalendarDay = key;
+      renderCalendar();
+    });
+    el.calendarGrid.appendChild(cell);
+  }
+
+  if (selectedCalendarDay && byDate.has(selectedCalendarDay)) {
+    el.calendarDayDetail.classList.remove("hidden");
+    el.calendarDayTitle.textContent = `${selectedCalendarDay} 的任務`;
+    el.calendarDayList.replaceChildren(...buildTaskListMobile(byDate.get(selectedCalendarDay)).children);
+  } else {
+    el.calendarDayDetail.classList.add("hidden");
+  }
+
+  el.unscheduledList.innerHTML = "";
+  if (unscheduled.length === 0) {
+    el.noUnscheduled.classList.remove("hidden");
+  } else {
+    el.noUnscheduled.classList.add("hidden");
+    el.unscheduledList.replaceChildren(...buildTaskListMobile(unscheduled).children);
+  }
+}
+
+// ---------- Request panels (待審核 / 我的申請紀錄) ----------
 
 function formatTime(value) {
   if (!value) return "";
@@ -557,6 +663,131 @@ function renderRequestPanels() {
   }
 }
 
+// ---------- Submit request form (學生：課程→科目→章節→任務) ----------
+
+function fillSelect(select, options, placeholder) {
+  select.innerHTML = `<option value="">${placeholder}</option>` +
+    options.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
+}
+
+function renderRequestForm() {
+  if (session.role !== "學生") return;
+  const courses = [...new Set(allTasks.map((t) => t.course))];
+  fillSelect(el.reqCourseSelect, courses, "選擇課程");
+  el.reqSubjectSelect.innerHTML = '<option value="">選擇科目</option>';
+  el.reqChapterSelect.innerHTML = '<option value="">選擇章節</option>';
+  el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
+  [el.reqSubjectSelect, el.reqChapterSelect, el.reqTaskSelect, el.reqStatusSelect].forEach((s) => (s.disabled = true));
+  el.reqSubmitBtn.disabled = true;
+  el.reqCurrentStatus.classList.add("hidden");
+  el.reqFormMessage.classList.add("hidden");
+  el.reqStatusSelect.value = "";
+}
+
+let selectedRequestTask = null;
+
+el.reqCourseSelect.addEventListener("change", () => {
+  const course = el.reqCourseSelect.value;
+  el.reqChapterSelect.innerHTML = '<option value="">選擇章節</option>';
+  el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
+  el.reqSubjectSelect.disabled = !course;
+  el.reqChapterSelect.disabled = true;
+  el.reqTaskSelect.disabled = true;
+  resetTaskSelection();
+  if (!course) {
+    el.reqSubjectSelect.innerHTML = '<option value="">選擇科目</option>';
+    return;
+  }
+  const subjects = [...new Set(allTasks.filter((t) => t.course === course).map((t) => t.subject))];
+  fillSelect(el.reqSubjectSelect, subjects, "選擇科目");
+});
+
+el.reqSubjectSelect.addEventListener("change", () => {
+  const course = el.reqCourseSelect.value;
+  const subject = el.reqSubjectSelect.value;
+  el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
+  el.reqChapterSelect.disabled = !subject;
+  el.reqTaskSelect.disabled = true;
+  resetTaskSelection();
+  if (!subject) {
+    el.reqChapterSelect.innerHTML = '<option value="">選擇章節</option>';
+    return;
+  }
+  const chapters = [...new Set(allTasks.filter((t) => t.course === course && t.subject === subject).map((t) => t.chapter))];
+  fillSelect(el.reqChapterSelect, chapters, "選擇章節");
+});
+
+el.reqChapterSelect.addEventListener("change", () => {
+  const course = el.reqCourseSelect.value;
+  const subject = el.reqSubjectSelect.value;
+  const chapter = el.reqChapterSelect.value;
+  el.reqTaskSelect.disabled = !chapter;
+  resetTaskSelection();
+  if (!chapter) {
+    el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
+    return;
+  }
+  const candidates = allTasks.filter(
+    (t) => t.course === course && t.subject === subject && t.chapter === chapter && !t.pendingStatus
+  );
+  el.reqTaskSelect.innerHTML =
+    '<option value="">選擇任務</option>' +
+    candidates.map((t) => `<option value="${escapeHtml(String(t.seq))}">${escapeHtml(t.task)}</option>`).join("");
+  if (candidates.length === 0) {
+    el.reqFormMessage.textContent = "這個章節底下的任務都已經有審核中的申請。";
+    el.reqFormMessage.classList.remove("hidden");
+  } else {
+    el.reqFormMessage.classList.add("hidden");
+  }
+});
+
+el.reqTaskSelect.addEventListener("change", () => {
+  const seq = el.reqTaskSelect.value;
+  resetTaskSelection();
+  if (!seq) return;
+  selectedRequestTask = allTasks.find((t) => String(t.seq) === seq) || null;
+  if (!selectedRequestTask) return;
+  el.reqCurrentStatus.textContent = `目前狀態：${STATUS_LABELS[selectedRequestTask.status]}`;
+  el.reqCurrentStatus.classList.remove("hidden");
+  el.reqStatusSelect.disabled = false;
+  [...el.reqStatusSelect.options].forEach((opt) => {
+    if (!opt.value) return;
+    opt.hidden = opt.value === selectedRequestTask.status;
+  });
+});
+
+el.reqStatusSelect.addEventListener("change", () => {
+  el.reqSubmitBtn.disabled = !selectedRequestTask || !el.reqStatusSelect.value;
+});
+
+function resetTaskSelection() {
+  selectedRequestTask = null;
+  el.reqCurrentStatus.classList.add("hidden");
+  el.reqStatusSelect.disabled = true;
+  el.reqStatusSelect.value = "";
+  el.reqSubmitBtn.disabled = true;
+}
+
+el.reqSubmitBtn.addEventListener("click", () => {
+  if (!selectedRequestTask || !el.reqStatusSelect.value) return;
+  el.reqSubmitBtn.disabled = true;
+  Api.submitRequest(session.name, selectedRequestTask.seq, el.reqStatusSelect.value)
+    .then((res) => {
+      if (!res.ok) {
+        el.reqFormMessage.textContent = res.error || "申請失敗";
+        el.reqFormMessage.classList.remove("hidden");
+        el.reqSubmitBtn.disabled = false;
+        return;
+      }
+      loadData();
+    })
+    .catch((err) => {
+      el.reqFormMessage.textContent = `申請失敗（${err.message}）`;
+      el.reqFormMessage.classList.remove("hidden");
+      el.reqSubmitBtn.disabled = false;
+    });
+});
+
 // ---------- Filters ----------
 
 el.statusFilter.addEventListener("click", (e) => {
@@ -565,11 +796,13 @@ el.statusFilter.addEventListener("click", (e) => {
   currentStatusFilter = chip.dataset.status;
   [...el.statusFilter.children].forEach((c) => c.classList.toggle("active", c === chip));
   renderSubjects();
+  renderCalendar();
 });
 
 el.searchInput.addEventListener("input", (e) => {
   currentSearch = e.target.value;
   renderSubjects();
+  renderCalendar();
 });
 
 el.refreshBtn.addEventListener("click", () => {
