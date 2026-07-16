@@ -6,6 +6,13 @@ const STATUS_LABELS = {
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
+const APP_VERSION = "v1.0";
+
+const VIEW_TITLES = {
+  dashboard: "儀表板",
+  requests: "申請審核",
+};
+
 const SESSION_KEY = "studyplan_session";
 
 const el = {
@@ -20,11 +27,18 @@ const el = {
   loginLoadError: document.getElementById("login-load-error"),
 
   appView: document.getElementById("app-view"),
-  currentUser: document.getElementById("current-user"),
   logoutBtn: document.getElementById("logout-btn"),
   mainNav: document.getElementById("main-nav"),
 
-  courseName: document.getElementById("course-name"),
+  statusBar: document.getElementById("status-bar"),
+  statusBarAvatar: document.getElementById("status-bar-avatar"),
+  statusBarName: document.getElementById("status-bar-name"),
+  statusBarVersion: document.getElementById("status-bar-version"),
+  statusBarViewTitle: document.getElementById("status-bar-view-title"),
+  statusBarUpdated: document.getElementById("status-bar-updated"),
+  userMenuTrigger: document.getElementById("user-menu-trigger"),
+  userMenu: document.getElementById("user-menu"),
+
   refreshBtn: document.getElementById("refresh-btn"),
   retryBtn: document.getElementById("retry-btn"),
   loadingState: document.getElementById("loading-state"),
@@ -207,12 +221,46 @@ el.logoutBtn.addEventListener("click", () => {
   window.location.reload();
 });
 
+// ---------- Status bar ----------
+
+function renderStatusBar() {
+  el.statusBarAvatar.textContent = session.name.slice(0, 1);
+  el.statusBarName.textContent = session.name;
+  el.statusBarVersion.textContent = APP_VERSION;
+  el.statusBarViewTitle.textContent = VIEW_TITLES[currentView];
+}
+
+function openUserMenu() {
+  const rect = el.userMenuTrigger.getBoundingClientRect();
+  el.userMenu.style.top = `${rect.bottom + 6}px`;
+  el.userMenu.style.left = `${rect.left}px`;
+  el.userMenu.classList.remove("hidden");
+}
+
+function closeUserMenu() {
+  el.userMenu.classList.add("hidden");
+}
+
+el.userMenuTrigger.addEventListener("click", () => {
+  if (el.userMenu.classList.contains("hidden")) {
+    openUserMenu();
+  } else {
+    closeUserMenu();
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (el.userMenu.classList.contains("hidden")) return;
+  if (el.userMenu.contains(e.target) || el.userMenuTrigger.contains(e.target)) return;
+  closeUserMenu();
+});
+
 // ---------- App shell ----------
 
 function enterApp() {
   el.loginView.classList.add("hidden");
   el.appView.classList.remove("hidden");
-  el.currentUser.textContent = `${session.name}（${session.role}）`;
+  renderStatusBar();
   el.studentToolbar.classList.toggle("hidden", session.role !== "家長");
   el.requestsPanel.classList.toggle("hidden", session.role !== "家長");
   el.myRequestsPanel.classList.toggle("hidden", session.role !== "學生");
@@ -239,6 +287,7 @@ el.mainNav.addEventListener("click", (e) => {
 function setCurrentView(view) {
   currentView = view;
   [...el.mainNav.children].forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
+  el.statusBarViewTitle.textContent = VIEW_TITLES[currentView];
   applyViewVisibility();
 }
 
@@ -320,9 +369,8 @@ function getStudentTasks() {
 }
 
 function renderAll() {
-  el.courseName.textContent = currentStudent ? `${currentStudent} 的學習計畫` : "";
   const lastUpdated = new Date().toLocaleString("zh-TW", { hour12: false });
-  el.currentUser.textContent = `${session.name}（${session.role}）・最後更新 ${lastUpdated}`;
+  el.statusBarUpdated.textContent = `最後更新：${lastUpdated}`;
 
   const studentTasks = getStudentTasks();
   renderSummary(studentTasks);

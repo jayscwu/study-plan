@@ -55,36 +55,88 @@ body {
   padding: 16px;
 }
 
-/* Header */
+/* Status bar */
 
-.app-header {
-  padding: 20px 4px 12px;
-}
-
-.header-top {
+.status-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  margin: -16px -16px 0;
+  padding: 10px 16px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.app-header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-}
-
-.course-name {
-  margin: 4px 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-}
-
-.header-actions {
+.status-bar-user {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
+}
+
+.status-bar-user .login-user-avatar {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.status-bar-user-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.status-bar-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.status-bar-version {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.status-bar-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+}
+
+.status-bar-view-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.status-bar-updated {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.user-menu {
+  position: fixed;
+  top: 56px;
+  left: 16px;
+  z-index: 60;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 8px;
 }
 
 .icon-btn {
@@ -109,13 +161,6 @@ body {
 
 .icon-btn.spinning {
   animation: spin 0.8s linear infinite;
-}
-
-.current-user {
-  margin: 6px 0 0;
-  font-size: 0.78rem;
-  color: var(--color-text-muted);
-  white-space: nowrap;
 }
 
 .primary-btn {
