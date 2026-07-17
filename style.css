@@ -693,49 +693,55 @@ body {
   transform: rotate(-90deg);
 }
 
-.subject-card.collapsed .task-table,
 .subject-card.collapsed .task-list-mobile {
   display: none;
 }
 
-/* Task table (desktop) */
-
-.task-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 14px;
-  font-size: 0.9rem;
-}
-
-.task-table th {
-  text-align: left;
+.subject-heading {
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--color-text-muted);
-  font-weight: 500;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.task-table td {
-  padding: 10px 10px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.task-table tr:last-child td {
-  border-bottom: none;
+  margin: 4px 2px 8px;
 }
 
 .task-list-mobile {
-  display: none;
-}
-
-#calendar-day-list,
-#unscheduled-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 14px;
+}
+
+/* Overview blocks (逾期／今日／明日) */
+
+.overview-block {
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.overview-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.overview-count {
+  margin-left: 6px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.overview-block.collapsed .subject-toggle {
+  transform: rotate(-90deg);
+}
+
+.overview-block.collapsed .task-list-mobile,
+.overview-block.collapsed .no-results {
+  display: none;
 }
 
 .task-list-item {
@@ -767,6 +773,13 @@ body {
   font-size: 0.8rem;
   color: var(--color-text-muted);
   margin-top: 2px;
+}
+
+.task-list-item-type:only-child {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  margin-top: 0;
 }
 
 .status-badge {
@@ -979,17 +992,6 @@ body {
 
   .subject-mini-progress {
     display: none;
-  }
-
-  .task-table {
-    display: none;
-  }
-
-  .task-list-mobile {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 14px;
   }
 
   .search-input {

@@ -51,8 +51,15 @@
       <button id="logout-btn" class="secondary-btn">登出</button>
     </div>
 
+    <!-- 家長：學生切換（三個頁籤共用） -->
+    <section id="student-toolbar" class="student-toolbar hidden">
+      <label for="student-select">檢視學生：</label>
+      <select id="student-select" class="student-select"></select>
+    </section>
+
     <nav class="main-nav" id="main-nav">
-      <button class="nav-tab active" data-view="dashboard">儀表板</button>
+      <button class="nav-tab active" data-view="overview">儀表板</button>
+      <button class="nav-tab" data-view="tasks">學習列表</button>
       <button class="nav-tab" data-view="requests">申請審核</button>
     </nav>
 
@@ -70,13 +77,7 @@
       </section>
 
       <!-- 儀表板頁籤 -->
-      <section id="view-dashboard" class="hidden">
-
-        <!-- 家長：學生切換 -->
-        <section id="student-toolbar" class="student-toolbar hidden">
-          <label for="student-select">檢視學生：</label>
-          <select id="student-select" class="student-select"></select>
-        </section>
+      <section id="view-overview" class="hidden">
 
         <section class="summary-card">
           <div class="summary-numbers">
@@ -107,6 +108,38 @@
             </div>
           </div>
         </section>
+
+        <section class="overview-block" id="overdue-block">
+          <div class="overview-block-header" id="overdue-header">
+            <h2 class="panel-title">逾期<span id="overdue-count" class="overview-count"></span></h2>
+            <button class="subject-toggle" aria-label="展開/收合">▾</button>
+          </div>
+          <div id="overdue-list" class="task-list-mobile"></div>
+          <p id="no-overdue" class="no-results hidden">目前沒有逾期的任務。</p>
+        </section>
+
+        <section class="overview-block" id="today-block">
+          <div class="overview-block-header" id="today-header">
+            <h2 class="panel-title">今日<span id="today-count" class="overview-count"></span></h2>
+            <button class="subject-toggle" aria-label="展開/收合">▾</button>
+          </div>
+          <div id="today-list" class="task-list-mobile"></div>
+          <p id="no-today" class="no-results hidden">今天沒有排定任務。</p>
+        </section>
+
+        <section class="overview-block" id="tomorrow-block">
+          <div class="overview-block-header" id="tomorrow-header">
+            <h2 class="panel-title">明日<span id="tomorrow-count" class="overview-count"></span></h2>
+            <button class="subject-toggle" aria-label="展開/收合">▾</button>
+          </div>
+          <div id="tomorrow-list" class="task-list-mobile"></div>
+          <p id="no-tomorrow" class="no-results hidden">明天沒有排定任務。</p>
+        </section>
+
+      </section>
+
+      <!-- 學習列表頁籤 -->
+      <section id="view-tasks" class="hidden">
 
         <section class="controls">
           <div class="status-filter" id="status-filter">

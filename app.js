@@ -9,7 +9,8 @@ const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 const APP_VERSION = "v1.0";
 
 const VIEW_TITLES = {
-  dashboard: "儀表板",
+  overview: "儀表板",
+  tasks: "學習列表",
   requests: "申請審核",
 };
 
@@ -45,11 +46,30 @@ const el = {
   errorState: document.getElementById("error-state"),
   errorMessage: document.getElementById("error-message"),
 
-  viewDashboard: document.getElementById("view-dashboard"),
+  viewOverview: document.getElementById("view-overview"),
+  viewTasks: document.getElementById("view-tasks"),
   viewRequests: document.getElementById("view-requests"),
 
   studentToolbar: document.getElementById("student-toolbar"),
   studentSelect: document.getElementById("student-select"),
+
+  overdueBlock: document.getElementById("overdue-block"),
+  overdueHeader: document.getElementById("overdue-header"),
+  overdueList: document.getElementById("overdue-list"),
+  overdueCount: document.getElementById("overdue-count"),
+  noOverdue: document.getElementById("no-overdue"),
+
+  todayBlock: document.getElementById("today-block"),
+  todayHeader: document.getElementById("today-header"),
+  todayList: document.getElementById("today-list"),
+  todayCount: document.getElementById("today-count"),
+  noToday: document.getElementById("no-today"),
+
+  tomorrowBlock: document.getElementById("tomorrow-block"),
+  tomorrowHeader: document.getElementById("tomorrow-header"),
+  tomorrowList: document.getElementById("tomorrow-list"),
+  tomorrowCount: document.getElementById("tomorrow-count"),
+  noTomorrow: document.getElementById("no-tomorrow"),
 
   modeToggle: document.getElementById("mode-toggle"),
   listMode: document.getElementById("list-mode"),
@@ -105,7 +125,7 @@ let currentStatusFilter = "all";
 let currentSearch = "";
 let selectedLoginUser = null;
 
-let currentView = "dashboard";
+let currentView = "overview";
 let dashboardMode = "list";
 let calendarDate = new Date();
 let selectedCalendarDay = null;
@@ -295,7 +315,8 @@ function applyViewVisibility() {
   const loadingHidden = el.loadingState.classList.contains("hidden");
   const errorHidden = el.errorState.classList.contains("hidden");
   const dataLoaded = loadingHidden && errorHidden;
-  el.viewDashboard.classList.toggle("hidden", !(dataLoaded && currentView === "dashboard"));
+  el.viewOverview.classList.toggle("hidden", !(dataLoaded && currentView === "overview"));
+  el.viewTasks.classList.toggle("hidden", !(dataLoaded && currentView === "tasks"));
   el.viewRequests.classList.toggle("hidden", !(dataLoaded && currentView === "requests"));
 }
 
@@ -339,14 +360,16 @@ el.studentSelect.addEventListener("change", (e) => {
 function showLoading() {
   el.loadingState.classList.remove("hidden");
   el.errorState.classList.add("hidden");
-  el.viewDashboard.classList.add("hidden");
+  el.viewOverview.classList.add("hidden");
+  el.viewTasks.classList.add("hidden");
   el.viewRequests.classList.add("hidden");
 }
 
 function showError(err) {
   el.loadingState.classList.add("hidden");
   el.errorState.classList.remove("hidden");
-  el.viewDashboard.classList.add("hidden");
+  el.viewOverview.classList.add("hidden");
+  el.viewTasks.classList.add("hidden");
   el.viewRequests.classList.add("hidden");
   el.errorMessage.textContent = err && err.message
     ? `讀取資料失敗（${err.message}），請確認網路連線或稍後再試。`
@@ -374,6 +397,7 @@ function renderAll() {
 
   const studentTasks = getStudentTasks();
   renderSummary(studentTasks);
+  renderOverview(studentTasks);
   renderSubjects();
   renderCalendar();
   renderRequestPanels();
@@ -394,6 +418,36 @@ function renderSummary(tasks) {
   el.overallPercent.textContent = `${percent}%`;
   el.overallProgressBar.style.width = `${percent}%`;
 }
+
+function renderOverviewGroup(tasks, listEl, countEl, noResultsEl) {
+  countEl.textContent = tasks.length ? `（${tasks.length}）` : "";
+  if (tasks.length === 0) {
+    listEl.innerHTML = "";
+    noResultsEl.classList.remove("hidden");
+  } else {
+    noResultsEl.classList.add("hidden");
+    listEl.replaceChildren(...buildTaskListMobile(tasks).children);
+  }
+}
+
+function renderOverview(tasks) {
+  const now = new Date();
+  const todayStr = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrowStr = dateKey(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
+
+  const overdue = tasks.filter((t) => t.date && t.date < todayStr && t.status !== "2");
+  const today = tasks.filter((t) => t.date === todayStr);
+  const tomorrowTasks = tasks.filter((t) => t.date === tomorrowStr);
+
+  renderOverviewGroup(overdue, el.overdueList, el.overdueCount, el.noOverdue);
+  renderOverviewGroup(today, el.todayList, el.todayCount, el.noToday);
+  renderOverviewGroup(tomorrowTasks, el.tomorrowList, el.tomorrowCount, el.noTomorrow);
+}
+
+el.overdueHeader.addEventListener("click", () => el.overdueBlock.classList.toggle("collapsed"));
+el.todayHeader.addEventListener("click", () => el.todayBlock.classList.toggle("collapsed"));
+el.tomorrowHeader.addEventListener("click", () => el.tomorrowBlock.classList.toggle("collapsed"));
 
 function getFilteredTasks() {
   const search = currentSearch.trim().toLowerCase();
@@ -449,18 +503,26 @@ function buildCourseBlock(course, tasks) {
   `;
   block.appendChild(header);
 
-  const container = document.createElement("div");
-  container.className = "subjects-container";
   const bySubject = groupBy(tasks, "subject");
   for (const [subject, subjectTasks] of bySubject) {
-    container.appendChild(buildSubjectCard(subject, subjectTasks));
+    const heading = document.createElement("h3");
+    heading.className = "subject-heading";
+    heading.textContent = subject;
+    block.appendChild(heading);
+
+    const container = document.createElement("div");
+    container.className = "subjects-container";
+    const byChapter = groupBy(subjectTasks, "chapter");
+    for (const [chapter, chapterTasks] of byChapter) {
+      container.appendChild(buildChapterCard(chapter, chapterTasks));
+    }
+    block.appendChild(container);
   }
-  block.appendChild(container);
 
   return block;
 }
 
-function buildSubjectCard(subject, tasks) {
+function buildChapterCard(chapter, tasks) {
   const total = tasks.length;
   const done = tasks.filter((t) => t.status === "2").length;
   const percent = total ? Math.round((done / total) * 100) : 0;
@@ -472,7 +534,7 @@ function buildSubjectCard(subject, tasks) {
   header.className = "subject-header";
   header.innerHTML = `
     <div class="subject-title-group">
-      <h3 class="subject-title">${escapeHtml(subject)}</h3>
+      <h4 class="subject-title">${escapeHtml(chapter)}</h4>
       <div class="subject-mini-progress">
         <div class="subject-mini-progress-fill" style="width:${percent}%"></div>
       </div>
@@ -485,32 +547,26 @@ function buildSubjectCard(subject, tasks) {
   });
   card.appendChild(header);
 
-  card.appendChild(buildTaskTable(tasks));
-  card.appendChild(buildTaskListMobile(tasks));
+  card.appendChild(buildTaskListSimple(tasks));
 
   return card;
 }
 
-function buildTaskTable(tasks) {
-  const table = document.createElement("table");
-  table.className = "task-table";
-  table.innerHTML = `
-    <thead>
-      <tr><th>章節</th><th>任務</th><th>狀態</th></tr>
-    </thead>
-    <tbody></tbody>
-  `;
-  const tbody = table.querySelector("tbody");
+function buildTaskListSimple(tasks) {
+  const list = document.createElement("div");
+  list.className = "task-list-mobile";
   for (const t of tasks) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(t.chapter)}</td>
-      <td>${escapeHtml(t.task)}</td>
-      <td>${statusBadge(t.status)}</td>
+    const item = document.createElement("div");
+    item.className = "task-list-item";
+    item.innerHTML = `
+      <div class="task-list-item-text">
+        <div class="task-list-item-type">${escapeHtml(t.task)}</div>
+      </div>
+      ${statusBadge(t.status)}
     `;
-    tbody.appendChild(tr);
+    list.appendChild(item);
   }
-  return table;
+  return list;
 }
 
 function buildTaskListMobile(tasks) {
