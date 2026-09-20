@@ -186,46 +186,7 @@
 
       <!-- 任務管理頁籤（家長專用） -->
       <section id="view-manage" class="hidden">
-
-        <!-- 新增／編輯任務 -->
-        <section id="task-form-panel" class="requests-panel">
-          <h2 class="panel-title" id="task-form-title">新增任務</h2>
-          <div class="request-form">
-            <select id="task-student-select" class="student-select"><option value="">選擇學生</option></select>
-            <select id="task-course-select" class="student-select"><option value="">選擇課程</option></select>
-            <select id="task-unit-select" class="student-select" disabled><option value="">選擇單元</option></select>
-          </div>
-          <div class="request-form">
-            <input type="text" id="task-name-input" class="student-select" placeholder="任務名稱（如：練習本、練習卷）">
-            <input type="date" id="task-date-input" class="student-select">
-            <select id="task-timeslot-select" class="student-select">
-              <option value="整天">整天</option>
-              <option value="上午">上午</option>
-              <option value="下午">下午</option>
-              <option value="晚上">晚上</option>
-            </select>
-          </div>
-          <div class="request-form">
-            <button id="task-submit-btn" class="primary-btn">新增任務</button>
-            <button id="task-cancel-edit-btn" class="secondary-btn hidden">取消編輯</button>
-          </div>
-          <p id="task-form-message" class="login-error hidden"></p>
-        </section>
-
-        <!-- 待回報審核 -->
-        <section id="pending-reports-panel" class="requests-panel">
-          <h2 class="panel-title">待回報審核</h2>
-          <div id="pending-reports-list" class="requests-list"></div>
-          <p id="no-pending-reports" class="no-results hidden">目前沒有待審核的回報。</p>
-        </section>
-
-        <!-- 任務清單管理 -->
-        <section id="manage-tasks-panel" class="requests-panel">
-          <h2 class="panel-title">任務清單管理</h2>
-          <div id="manage-tasks-list" class="requests-list"></div>
-          <p id="no-manage-tasks" class="no-results hidden">這位學生目前沒有任務。</p>
-        </section>
-
+        <section id="manage-tasks-tree"></section>
       </section>
 
     </main>

@@ -76,23 +76,7 @@ const el = {
   listMode: document.getElementById("list-mode"),
   calendarMode: document.getElementById("calendar-mode"),
 
-  taskFormPanel: document.getElementById("task-form-panel"),
-  taskFormTitle: document.getElementById("task-form-title"),
-  taskStudentSelect: document.getElementById("task-student-select"),
-  taskCourseSelect: document.getElementById("task-course-select"),
-  taskUnitSelect: document.getElementById("task-unit-select"),
-  taskNameInput: document.getElementById("task-name-input"),
-  taskDateInput: document.getElementById("task-date-input"),
-  taskTimeSlotSelect: document.getElementById("task-timeslot-select"),
-  taskSubmitBtn: document.getElementById("task-submit-btn"),
-  taskCancelEditBtn: document.getElementById("task-cancel-edit-btn"),
-  taskFormMessage: document.getElementById("task-form-message"),
-
-  pendingReportsList: document.getElementById("pending-reports-list"),
-  noPendingReports: document.getElementById("no-pending-reports"),
-
-  manageTasksList: document.getElementById("manage-tasks-list"),
-  noManageTasks: document.getElementById("no-manage-tasks"),
+  manageTasksTree: document.getElementById("manage-tasks-tree"),
 
   statTotal: document.getElementById("stat-total"),
   statDone: document.getElementById("stat-done"),
@@ -125,6 +109,8 @@ let currentStatusFilter = "all";
 let currentSearch = "";
 let selectedLoginUser = null;
 let editingTaskId = null;
+let addingTaskUnit = null;
+let expandedUnits = new Set();
 
 let currentView = "overview";
 let dashboardMode = "list";
@@ -333,7 +319,7 @@ function loadData() {
       allStudents = usersRes.users.filter((u) => u.role === "學生");
 
       if (session.role === "家長") {
-        const students = [...new Set(allTasks.map((t) => t.student).filter(Boolean))];
+        const students = allStudents.map((s) => s.name);
         const prevSelection = currentStudent;
         el.studentSelect.innerHTML = students
           .map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
@@ -344,7 +330,6 @@ function loadData() {
         currentStudent = session.name;
       }
 
-      populateTaskFormOptions();
       renderAll();
       showData();
     })
@@ -402,7 +387,6 @@ function renderAll() {
   renderOverview(studentTasks);
   renderSubjects();
   renderCalendar();
-  renderPendingReports();
   renderManageTasksList();
 }
 
@@ -743,122 +727,154 @@ function timeSlotBadge(slot) {
   return `<span class="status-badge status-slot">${escapeHtml(slot || "整天")}</span>`;
 }
 
-function fillSelect(select, options, placeholder) {
-  select.innerHTML = `<option value="">${placeholder}</option>` +
-    options.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
+// ---------- 任務管理（家長）：課程/單元/任務樹 ----------
+
+function unitKey(course, unit) {
+  return `${course}||${unit}`;
 }
 
-// ---------- 任務管理（家長）：新增／編輯任務表單 ----------
-
-function populateTaskFormOptions() {
-  fillSelect(el.taskStudentSelect, allStudents.map((s) => s.name), "選擇學生");
-  const courses = [...new Set(allCourseUnits.map((u) => u.course))];
-  fillSelect(el.taskCourseSelect, courses, "選擇課程");
-}
-
-function populateTaskUnitSelect(course) {
-  el.taskUnitSelect.disabled = !course;
-  if (!course) {
-    el.taskUnitSelect.innerHTML = '<option value="">選擇單元</option>';
-    return;
+function renderManageTasksList() {
+  if (session.role !== "家長") return;
+  el.manageTasksTree.innerHTML = "";
+  const studentTasks = allTasks.filter((t) => t.student === currentStudent);
+  const byCourse = groupBy(allCourseUnits, "course");
+  for (const [course, units] of byCourse) {
+    el.manageTasksTree.appendChild(buildManageCourseBlock(course, units, studentTasks));
   }
-  const units = allCourseUnits.filter((u) => u.course === course);
-  el.taskUnitSelect.innerHTML =
-    '<option value="">選擇單元</option>' +
-    units
-      .map((u) => `<option value="${escapeHtml(u.unit)}">${escapeHtml(`${u.unitCode} ${u.unit}`.trim())}</option>`)
-      .join("");
 }
 
-el.taskCourseSelect.addEventListener("change", () => populateTaskUnitSelect(el.taskCourseSelect.value));
+function buildManageCourseBlock(course, units, studentTasks) {
+  const block = document.createElement("section");
+  block.className = "course-block";
 
-function resetTaskForm() {
-  editingTaskId = null;
-  el.taskFormTitle.textContent = "新增任務";
-  el.taskSubmitBtn.textContent = "新增任務";
-  el.taskCancelEditBtn.classList.add("hidden");
-  el.taskStudentSelect.value = "";
-  el.taskCourseSelect.value = "";
-  populateTaskUnitSelect("");
-  el.taskNameInput.value = "";
-  el.taskDateInput.value = "";
-  el.taskTimeSlotSelect.value = "整天";
-  el.taskFormMessage.classList.add("hidden");
-}
+  const header = document.createElement("div");
+  header.className = "course-block-header";
+  header.innerHTML = `<h2 class="course-block-title">${escapeHtml(course)}</h2>`;
+  block.appendChild(header);
 
-function startEditTask(t) {
-  editingTaskId = t.id;
-  el.taskFormTitle.textContent = "編輯任務";
-  el.taskSubmitBtn.textContent = "更新任務";
-  el.taskCancelEditBtn.classList.remove("hidden");
-  el.taskStudentSelect.value = t.student;
-  el.taskCourseSelect.value = t.course;
-  populateTaskUnitSelect(t.course);
-  el.taskUnitSelect.value = t.unit;
-  el.taskNameInput.value = t.task;
-  el.taskDateInput.value = t.date || "";
-  el.taskTimeSlotSelect.value = t.timeSlot || "整天";
-  el.taskFormMessage.classList.add("hidden");
-  el.taskFormPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-el.taskCancelEditBtn.addEventListener("click", resetTaskForm);
-
-el.taskSubmitBtn.addEventListener("click", () => {
-  const payload = {
-    student: el.taskStudentSelect.value,
-    course: el.taskCourseSelect.value,
-    unit: el.taskUnitSelect.value,
-    task: el.taskNameInput.value.trim(),
-    date: el.taskDateInput.value,
-    timeSlot: el.taskTimeSlotSelect.value,
-  };
-  if (!payload.student || !payload.course || !payload.unit || !payload.task) {
-    el.taskFormMessage.textContent = "請完整填寫學生、課程、單元與任務名稱。";
-    el.taskFormMessage.classList.remove("hidden");
-    return;
+  const container = document.createElement("div");
+  container.className = "subjects-container";
+  for (const u of units) {
+    const unitTasks = studentTasks.filter((t) => t.course === course && t.unit === u.unit);
+    container.appendChild(buildManageUnitCard(course, u, unitTasks));
   }
-  el.taskSubmitBtn.disabled = true;
-  const call = editingTaskId
-    ? Api.updateTask({ id: editingTaskId, editor: session.name, ...payload })
-    : Api.createTask({ creator: session.name, ...payload });
-  call
-    .then((res) => {
-      el.taskSubmitBtn.disabled = false;
-      if (!res.ok) {
-        el.taskFormMessage.textContent = res.error || "操作失敗";
-        el.taskFormMessage.classList.remove("hidden");
-        return;
-      }
-      resetTaskForm();
-      loadData();
-    })
-    .catch((err) => {
-      el.taskSubmitBtn.disabled = false;
-      el.taskFormMessage.textContent = `操作失敗（${err.message}）`;
-      el.taskFormMessage.classList.remove("hidden");
-    });
-});
+  block.appendChild(container);
 
-// ---------- 任務管理（家長）：待回報審核 ----------
+  return block;
+}
 
-function buildPendingReportItem(t) {
-  const item = document.createElement("div");
-  item.className = "request-item";
-  item.innerHTML = `
-    <div class="request-item-info">
-      <p class="request-item-title">${escapeHtml(t.course)}・${escapeHtml(t.unit)}・${escapeHtml(t.task)} ${timeSlotBadge(t.timeSlot)}</p>
-      <p class="request-item-meta">${escapeHtml(t.student)} ・ ${formatTime(t.reportTime)}</p>
+function buildManageUnitCard(course, u, tasks) {
+  const key = unitKey(course, u.unit);
+  const card = document.createElement("section");
+  card.className = "subject-card" + (expandedUnits.has(key) ? "" : " collapsed");
+
+  const label = `${u.unitCode} ${u.unit}`.trim();
+  const header = document.createElement("div");
+  header.className = "subject-header";
+  header.innerHTML = `
+    <div class="subject-title-group">
+      <h4 class="subject-title">${escapeHtml(label)}</h4>
+      <span class="subject-percent">${tasks.length} 個任務</span>
     </div>
-    <div class="request-item-actions">
-      <button class="approve-btn" data-decision="核准">核准</button>
-      <button class="reject-btn" data-decision="拒絕">拒絕</button>
+    <button class="subject-toggle" aria-label="展開/收合">▾</button>
+  `;
+  header.addEventListener("click", () => {
+    if (expandedUnits.has(key)) {
+      expandedUnits.delete(key);
+    } else {
+      expandedUnits.add(key);
+    }
+    card.classList.toggle("collapsed");
+  });
+  card.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "task-list-mobile";
+  tasks.forEach((t) => body.appendChild(buildManageTaskRow(t)));
+  card.appendChild(body);
+
+  card.appendChild(buildAddTaskControl(course, u.unit, key));
+
+  return card;
+}
+
+function buildManageTaskRow(t) {
+  const row = document.createElement("div");
+  row.className = "task-list-item";
+
+  if (editingTaskId === t.id) {
+    row.innerHTML = `
+      <div class="request-form">
+        <input type="text" class="student-select edit-task-name" value="${escapeHtml(t.task)}">
+        <input type="date" class="student-select edit-task-date" value="${escapeHtml(t.date || "")}">
+        <select class="student-select edit-task-slot">
+          <option value="整天">整天</option>
+          <option value="上午">上午</option>
+          <option value="下午">下午</option>
+          <option value="晚上">晚上</option>
+        </select>
+      </div>
+      <div class="request-item-actions">
+        <button class="primary-btn" data-action="save">儲存</button>
+        <button class="secondary-btn" data-action="cancel">取消</button>
+      </div>
+    `;
+    row.querySelector(".edit-task-slot").value = t.timeSlot || "整天";
+    row.querySelector('[data-action="cancel"]').addEventListener("click", () => {
+      editingTaskId = null;
+      renderManageTasksList();
+    });
+    row.querySelector('[data-action="save"]').addEventListener("click", () => {
+      const task = row.querySelector(".edit-task-name").value.trim();
+      if (!task) return;
+      Api.updateTask({
+        id: t.id,
+        editor: session.name,
+        student: t.student,
+        course: t.course,
+        unit: t.unit,
+        task,
+        date: row.querySelector(".edit-task-date").value,
+        timeSlot: row.querySelector(".edit-task-slot").value,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            alert(res.error || "更新失敗");
+            return;
+          }
+          editingTaskId = null;
+          loadData();
+        })
+        .catch((err) => alert(`更新失敗（${err.message}）`));
+    });
+    return row;
+  }
+
+  row.innerHTML = `
+    <div class="task-list-item-text">
+      <div class="task-list-item-type">${escapeHtml(t.task)}</div>
+      <div class="task-list-item-course">${t.date ? escapeHtml(t.date) : "未排定日期"}</div>
+    </div>
+    <div class="task-list-item-actions">
+      <div class="task-row-badges">
+        ${timeSlotBadge(t.timeSlot)}
+        ${statusBadge(t.status)}
+        ${t.reportStatus ? reviewStatusBadge(t.reportStatus) : ""}
+      </div>
+      <div class="request-item-actions">
+        ${t.reportStatus === "待審核" ? '<button class="approve-btn" data-action="approve">核准</button><button class="reject-btn" data-action="reject">拒絕</button>' : ""}
+        <button class="secondary-btn" data-action="edit">編輯</button>
+        <button class="reject-btn" data-action="delete">刪除</button>
+      </div>
     </div>
   `;
-  item.querySelectorAll("button[data-decision]").forEach((btn) => {
+
+  ["approve", "reject"].forEach((action) => {
+    const btn = row.querySelector(`[data-action="${action}"]`);
+    if (!btn) return;
     btn.addEventListener("click", () => {
-      item.querySelectorAll("button").forEach((b) => (b.disabled = true));
-      Api.reviewTask(t.id, btn.dataset.decision, session.name)
+      row.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      Api.reviewTask(t.id, action === "approve" ? "核准" : "拒絕", session.name)
         .then((res) => {
           if (!res.ok) alert(res.error || "審核失敗");
           loadData();
@@ -866,40 +882,12 @@ function buildPendingReportItem(t) {
         .catch((err) => alert(`審核失敗（${err.message}）`));
     });
   });
-  return item;
-}
 
-function renderPendingReports() {
-  if (session.role !== "家長") return;
-  const pending = allTasks.filter((t) => t.reportStatus === "待審核");
-  el.pendingReportsList.innerHTML = "";
-  if (pending.length === 0) {
-    el.noPendingReports.classList.remove("hidden");
-  } else {
-    el.noPendingReports.classList.add("hidden");
-    pending.forEach((t) => el.pendingReportsList.appendChild(buildPendingReportItem(t)));
-  }
-}
-
-// ---------- 任務管理（家長）：任務清單管理 ----------
-
-function buildManageTaskItem(t) {
-  const item = document.createElement("div");
-  item.className = "request-item";
-  item.innerHTML = `
-    <div class="request-item-info">
-      <p class="request-item-title">${escapeHtml(t.course)}・${escapeHtml(t.unit)}・${escapeHtml(t.task)}</p>
-      <p class="request-item-meta">
-        ${t.date ? escapeHtml(t.date) : "未排定日期"} ${timeSlotBadge(t.timeSlot)} ${statusBadge(t.status)} ${t.reportStatus ? reviewStatusBadge(t.reportStatus) : ""}
-      </p>
-    </div>
-    <div class="request-item-actions">
-      <button class="secondary-btn" data-action="edit">編輯</button>
-      <button class="reject-btn" data-action="delete">刪除</button>
-    </div>
-  `;
-  item.querySelector('[data-action="edit"]').addEventListener("click", () => startEditTask(t));
-  item.querySelector('[data-action="delete"]').addEventListener("click", () => {
+  row.querySelector('[data-action="edit"]').addEventListener("click", () => {
+    editingTaskId = t.id;
+    renderManageTasksList();
+  });
+  row.querySelector('[data-action="delete"]').addEventListener("click", () => {
     if (!confirm(`確定要刪除「${t.task}」這筆任務嗎？`)) return;
     Api.deleteTask({ id: t.id, editor: session.name })
       .then((res) => {
@@ -911,19 +899,67 @@ function buildManageTaskItem(t) {
       })
       .catch((err) => alert(`刪除失敗（${err.message}）`));
   });
-  return item;
+
+  return row;
 }
 
-function renderManageTasksList() {
-  if (session.role !== "家長") return;
-  const tasks = allTasks.filter((t) => t.student === currentStudent);
-  el.manageTasksList.innerHTML = "";
-  if (tasks.length === 0) {
-    el.noManageTasks.classList.remove("hidden");
-  } else {
-    el.noManageTasks.classList.add("hidden");
-    tasks.forEach((t) => el.manageTasksList.appendChild(buildManageTaskItem(t)));
+function buildAddTaskControl(course, unit, key) {
+  const wrap = document.createElement("div");
+
+  if (addingTaskUnit !== key) {
+    const btn = document.createElement("button");
+    btn.className = "secondary-btn";
+    btn.textContent = "+ 新增任務";
+    btn.addEventListener("click", () => {
+      addingTaskUnit = key;
+      expandedUnits.add(key);
+      renderManageTasksList();
+    });
+    wrap.appendChild(btn);
+    return wrap;
   }
+
+  wrap.className = "request-form";
+  wrap.innerHTML = `
+    <input type="text" class="student-select add-task-name" placeholder="任務名稱（如：練習本、練習卷）">
+    <input type="date" class="student-select add-task-date">
+    <select class="student-select add-task-slot">
+      <option value="整天">整天</option>
+      <option value="上午">上午</option>
+      <option value="下午">下午</option>
+      <option value="晚上">晚上</option>
+    </select>
+    <button class="primary-btn" data-action="save">新增</button>
+    <button class="secondary-btn" data-action="cancel">取消</button>
+  `;
+  wrap.querySelector('[data-action="cancel"]').addEventListener("click", () => {
+    addingTaskUnit = null;
+    renderManageTasksList();
+  });
+  wrap.querySelector('[data-action="save"]').addEventListener("click", () => {
+    const task = wrap.querySelector(".add-task-name").value.trim();
+    if (!task) return;
+    Api.createTask({
+      creator: session.name,
+      student: currentStudent,
+      course,
+      unit,
+      task,
+      date: wrap.querySelector(".add-task-date").value,
+      timeSlot: wrap.querySelector(".add-task-slot").value,
+    })
+      .then((res) => {
+        if (!res.ok) {
+          alert(res.error || "新增失敗");
+          return;
+        }
+        addingTaskUnit = null;
+        loadData();
+      })
+      .catch((err) => alert(`新增失敗（${err.message}）`));
+  });
+
+  return wrap;
 }
 
 // ---------- Filters ----------
