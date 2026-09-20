@@ -24,6 +24,8 @@ const STATUS_LABELS = {
   "2": "2-已完成",
 };
 
+const TIME_SLOTS = ["整天", "上午", "下午", "晚上"];
+
 function statusCode(fullLabel) {
   const match = /^(\d)/.exec(String(fullLabel || "").trim());
   return match ? match[1] : "0";
@@ -177,6 +179,7 @@ function handleTasks(name, role) {
     task: r["任務名稱"],
     status: statusCode(r["狀態"]),
     date: formatTaskDate(r["預計學習日期"], tz),
+    timeSlot: r["時段"] || "整天",
     reportStatus: r["回報狀態"] || "",
     reportTime: r["回報時間"] || "",
     reviewer: r["審核人"] || "",
@@ -208,27 +211,27 @@ function handleCreateTask(body) {
   const course = String(body.course || "").trim();
   const unit = String(body.unit || "").trim();
   const task = String(body.task || "").trim();
+  const timeSlot = String(body.timeSlot || "").trim();
 
   if (!isParent(creator)) return { ok: false, error: "沒有權限新增任務" };
   if (!isStudent(student)) return { ok: false, error: "找不到這個學生" };
   if (!course || !unit) return { ok: false, error: "請選擇課程與單元" };
   if (!findCourseUnit(course, unit)) return { ok: false, error: "找不到這個課程/單元" };
   if (!task) return { ok: false, error: "請輸入任務名稱" };
+  if (TIME_SLOTS.indexOf(timeSlot) === -1) return { ok: false, error: "時段不合法" };
 
   const sheet = openSheet(TASKS_FILE_ID);
-  sheet.appendRow([
-    student,
-    course,
-    unit,
-    task,
-    STATUS_LABELS["0"],
-    parseTaskDate(body.date),
-    "",
-    "",
-    "",
-    "",
-    creator,
-  ]);
+  const header = sheet.getDataRange().getValues()[0];
+  const rowIndex = sheet.getLastRow() + 1;
+
+  sheet.getRange(rowIndex, taskCol(header, "學生")).setValue(student);
+  sheet.getRange(rowIndex, taskCol(header, "課程名稱")).setValue(course);
+  sheet.getRange(rowIndex, taskCol(header, "單元名稱")).setValue(unit);
+  sheet.getRange(rowIndex, taskCol(header, "任務名稱")).setValue(task);
+  sheet.getRange(rowIndex, taskCol(header, "狀態")).setValue(STATUS_LABELS["0"]);
+  sheet.getRange(rowIndex, taskCol(header, "預計學習日期")).setValue(parseTaskDate(body.date));
+  sheet.getRange(rowIndex, taskCol(header, "時段")).setValue(timeSlot);
+  sheet.getRange(rowIndex, taskCol(header, "建立人")).setValue(creator);
 
   return { ok: true };
 }
@@ -244,10 +247,12 @@ function handleUpdateTask(body) {
   const course = String(body.course || "").trim();
   const unit = String(body.unit || "").trim();
   const task = String(body.task || "").trim();
+  const timeSlot = String(body.timeSlot || "").trim();
 
   if (!isStudent(student)) return { ok: false, error: "找不到這個學生" };
   if (!course || !unit || !findCourseUnit(course, unit)) return { ok: false, error: "找不到這個課程/單元" };
   if (!task) return { ok: false, error: "請輸入任務名稱" };
+  if (TIME_SLOTS.indexOf(timeSlot) === -1) return { ok: false, error: "時段不合法" };
 
   const { sheet, header, row } = found;
   sheet.getRange(row.rowIndex, taskCol(header, "學生")).setValue(student);
@@ -255,6 +260,7 @@ function handleUpdateTask(body) {
   sheet.getRange(row.rowIndex, taskCol(header, "單元名稱")).setValue(unit);
   sheet.getRange(row.rowIndex, taskCol(header, "任務名稱")).setValue(task);
   sheet.getRange(row.rowIndex, taskCol(header, "預計學習日期")).setValue(parseTaskDate(body.date));
+  sheet.getRange(row.rowIndex, taskCol(header, "時段")).setValue(timeSlot);
 
   return { ok: true };
 }

@@ -83,6 +83,7 @@ const el = {
   taskUnitSelect: document.getElementById("task-unit-select"),
   taskNameInput: document.getElementById("task-name-input"),
   taskDateInput: document.getElementById("task-date-input"),
+  taskTimeSlotSelect: document.getElementById("task-timeslot-select"),
   taskSubmitBtn: document.getElementById("task-submit-btn"),
   taskCancelEditBtn: document.getElementById("task-cancel-edit-btn"),
   taskFormMessage: document.getElementById("task-form-message"),
@@ -567,6 +568,7 @@ function buildTaskListItem(t, showCourse) {
       <div class="task-list-item-type">${escapeHtml(t.task)}</div>
     </div>
     <div class="task-list-item-actions">
+      ${timeSlotBadge(t.timeSlot)}
       ${statusBadge(t.status)}
       ${reportActionHtml(t)}
     </div>
@@ -737,6 +739,10 @@ function reviewStatusBadge(reviewStatus) {
   return `<span class="status-badge ${cls}">${escapeHtml(reviewStatus)}</span>`;
 }
 
+function timeSlotBadge(slot) {
+  return `<span class="status-badge status-slot">${escapeHtml(slot || "整天")}</span>`;
+}
+
 function fillSelect(select, options, placeholder) {
   select.innerHTML = `<option value="">${placeholder}</option>` +
     options.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
@@ -776,6 +782,7 @@ function resetTaskForm() {
   populateTaskUnitSelect("");
   el.taskNameInput.value = "";
   el.taskDateInput.value = "";
+  el.taskTimeSlotSelect.value = "整天";
   el.taskFormMessage.classList.add("hidden");
 }
 
@@ -790,6 +797,7 @@ function startEditTask(t) {
   el.taskUnitSelect.value = t.unit;
   el.taskNameInput.value = t.task;
   el.taskDateInput.value = t.date || "";
+  el.taskTimeSlotSelect.value = t.timeSlot || "整天";
   el.taskFormMessage.classList.add("hidden");
   el.taskFormPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -803,6 +811,7 @@ el.taskSubmitBtn.addEventListener("click", () => {
     unit: el.taskUnitSelect.value,
     task: el.taskNameInput.value.trim(),
     date: el.taskDateInput.value,
+    timeSlot: el.taskTimeSlotSelect.value,
   };
   if (!payload.student || !payload.course || !payload.unit || !payload.task) {
     el.taskFormMessage.textContent = "請完整填寫學生、課程、單元與任務名稱。";
@@ -838,7 +847,7 @@ function buildPendingReportItem(t) {
   item.className = "request-item";
   item.innerHTML = `
     <div class="request-item-info">
-      <p class="request-item-title">${escapeHtml(t.course)}・${escapeHtml(t.unit)}・${escapeHtml(t.task)}</p>
+      <p class="request-item-title">${escapeHtml(t.course)}・${escapeHtml(t.unit)}・${escapeHtml(t.task)} ${timeSlotBadge(t.timeSlot)}</p>
       <p class="request-item-meta">${escapeHtml(t.student)} ・ ${formatTime(t.reportTime)}</p>
     </div>
     <div class="request-item-actions">
@@ -881,7 +890,7 @@ function buildManageTaskItem(t) {
     <div class="request-item-info">
       <p class="request-item-title">${escapeHtml(t.course)}・${escapeHtml(t.unit)}・${escapeHtml(t.task)}</p>
       <p class="request-item-meta">
-        ${t.date ? escapeHtml(t.date) : "未排定日期"} ${statusBadge(t.status)} ${t.reportStatus ? reviewStatusBadge(t.reportStatus) : ""}
+        ${t.date ? escapeHtml(t.date) : "未排定日期"} ${timeSlotBadge(t.timeSlot)} ${statusBadge(t.status)} ${t.reportStatus ? reviewStatusBadge(t.reportStatus) : ""}
       </p>
     </div>
     <div class="request-item-actions">

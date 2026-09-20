@@ -841,6 +841,11 @@ body {
   color: var(--color-progress-text);
 }
 
+.status-badge.status-slot {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+}
+
 /* Course grouping */
 
 .course-block {
