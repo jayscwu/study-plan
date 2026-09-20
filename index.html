@@ -60,7 +60,7 @@
     <nav class="main-nav" id="main-nav">
       <button class="nav-tab active" data-view="overview">儀表板</button>
       <button class="nav-tab" data-view="tasks">學習列表</button>
-      <button class="nav-tab" data-view="requests">申請審核</button>
+      <button class="nav-tab" id="nav-manage-btn" data-view="manage">任務管理</button>
     </nav>
 
     <main id="main-content">
@@ -184,45 +184,40 @@
 
       </section>
 
-      <!-- 申請審核頁籤 -->
-      <section id="view-requests" class="hidden">
+      <!-- 任務管理頁籤（家長專用） -->
+      <section id="view-manage" class="hidden">
 
-        <!-- 學生：提出申請 -->
-        <section id="submit-request-panel" class="requests-panel hidden">
-          <h2 class="panel-title">申請變更狀態</h2>
-          <input type="search" id="req-search-input" class="search-input req-search-input" placeholder="搜尋課程、科目、章節或任務...">
-          <div id="req-search-results" class="requests-list req-search-results hidden"></div>
+        <!-- 新增／編輯任務 -->
+        <section id="task-form-panel" class="requests-panel">
+          <h2 class="panel-title" id="task-form-title">新增任務</h2>
           <div class="request-form">
-            <select id="req-course-select" class="student-select"><option value="">選擇課程</option></select>
-            <select id="req-subject-select" class="student-select" disabled><option value="">選擇科目</option></select>
-            <select id="req-chapter-select" class="student-select" disabled><option value="">選擇章節</option></select>
-            <select id="req-task-select" class="student-select" disabled><option value="">選擇任務</option></select>
+            <select id="task-student-select" class="student-select"><option value="">選擇學生</option></select>
+            <select id="task-course-select" class="student-select"><option value="">選擇課程</option></select>
+            <select id="task-unit-select" class="student-select" disabled><option value="">選擇單元</option></select>
           </div>
-          <div id="req-current-status" class="request-current-status hidden"></div>
           <div class="request-form">
-            <select id="req-status-select" class="student-select" disabled>
-              <option value="">選擇新狀態</option>
-              <option value="0">待執行</option>
-              <option value="1">學習中</option>
-              <option value="2">已完成</option>
-            </select>
-            <button id="req-submit-btn" class="primary-btn" disabled>送出申請</button>
+            <input type="text" id="task-name-input" class="student-select" placeholder="任務名稱（如：練習本、練習卷）">
+            <input type="date" id="task-date-input" class="student-select">
           </div>
-          <p id="req-form-message" class="login-error hidden"></p>
+          <div class="request-form">
+            <button id="task-submit-btn" class="primary-btn">新增任務</button>
+            <button id="task-cancel-edit-btn" class="secondary-btn hidden">取消編輯</button>
+          </div>
+          <p id="task-form-message" class="login-error hidden"></p>
         </section>
 
-        <!-- 家長：待審核申請 -->
-        <section id="requests-panel" class="requests-panel hidden">
-          <h2 class="panel-title">待審核申請</h2>
-          <div id="pending-requests-list" class="requests-list"></div>
-          <p id="no-pending-requests" class="no-results hidden">目前沒有待審核的申請。</p>
+        <!-- 待回報審核 -->
+        <section id="pending-reports-panel" class="requests-panel">
+          <h2 class="panel-title">待回報審核</h2>
+          <div id="pending-reports-list" class="requests-list"></div>
+          <p id="no-pending-reports" class="no-results hidden">目前沒有待審核的回報。</p>
         </section>
 
-        <!-- 學生：我的申請紀錄 -->
-        <section id="my-requests-panel" class="requests-panel hidden">
-          <h2 class="panel-title">我的申請紀錄</h2>
-          <div id="my-requests-list" class="requests-list"></div>
-          <p id="no-my-requests" class="no-results hidden">目前沒有申請紀錄。</p>
+        <!-- 任務清單管理 -->
+        <section id="manage-tasks-panel" class="requests-panel">
+          <h2 class="panel-title">任務清單管理</h2>
+          <div id="manage-tasks-list" class="requests-list"></div>
+          <p id="no-manage-tasks" class="no-results hidden">這位學生目前沒有任務。</p>
         </section>
 
       </section>

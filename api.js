@@ -1,5 +1,5 @@
 // 部署 Apps Script 後，把產生的網址貼在這裡（見 README「Apps Script 部署步驟」）
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby03zKLtUptIejroZYumiPEG-Y3vYrVAIdXcEYmmupjVFqeOgzBmGdzJAHeOXn36an6/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxHOWIeiaKO7Hi6qP4ByQE70mdLuMBH4wqnNP-Y6AqhGI5IQcXXcgy83t2HZfljyao1nw/exec";
 
 function apiGet(action, params) {
   const query = new URLSearchParams({ action, ...params }).toString();
@@ -23,9 +23,10 @@ const Api = {
   getUsers: () => apiGet("users", {}),
   login: (name, pin) => apiPost("login", { name, pin }),
   getTasks: (name, role) => apiGet("tasks", { name, role }),
-  getRequests: (name, role) => apiGet("requests", { name, role }),
-  submitRequest: (student, seq, newStatus) =>
-    apiPost("submitRequest", { student, seq, newStatus }),
-  reviewRequest: (requestId, decision, reviewer) =>
-    apiPost("reviewRequest", { requestId, decision, reviewer }),
+  getCourseUnits: () => apiGet("courseUnits", {}),
+  createTask: (payload) => apiPost("createTask", payload),
+  updateTask: (payload) => apiPost("updateTask", payload),
+  deleteTask: (payload) => apiPost("deleteTask", payload),
+  reportTask: (student, id) => apiPost("reportTask", { student, id }),
+  reviewTask: (id, decision, reviewer) => apiPost("reviewTask", { id, decision, reviewer }),
 };

@@ -6,12 +6,12 @@ const STATUS_LABELS = {
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v1.0";
+const APP_VERSION = "v2.0";
 
 const VIEW_TITLES = {
   overview: "儀表板",
   tasks: "學習列表",
-  requests: "申請審核",
+  manage: "任務管理",
 };
 
 const SESSION_KEY = "studyplan_session";
@@ -30,6 +30,7 @@ const el = {
   appView: document.getElementById("app-view"),
   logoutBtn: document.getElementById("logout-btn"),
   mainNav: document.getElementById("main-nav"),
+  navManageBtn: document.getElementById("nav-manage-btn"),
 
   statusBar: document.getElementById("status-bar"),
   statusBarAvatar: document.getElementById("status-bar-avatar"),
@@ -48,7 +49,7 @@ const el = {
 
   viewOverview: document.getElementById("view-overview"),
   viewTasks: document.getElementById("view-tasks"),
-  viewRequests: document.getElementById("view-requests"),
+  viewManage: document.getElementById("view-manage"),
 
   studentToolbar: document.getElementById("student-toolbar"),
   studentSelect: document.getElementById("student-select"),
@@ -75,25 +76,22 @@ const el = {
   listMode: document.getElementById("list-mode"),
   calendarMode: document.getElementById("calendar-mode"),
 
-  requestsPanel: document.getElementById("requests-panel"),
-  pendingRequestsList: document.getElementById("pending-requests-list"),
-  noPendingRequests: document.getElementById("no-pending-requests"),
+  taskFormPanel: document.getElementById("task-form-panel"),
+  taskFormTitle: document.getElementById("task-form-title"),
+  taskStudentSelect: document.getElementById("task-student-select"),
+  taskCourseSelect: document.getElementById("task-course-select"),
+  taskUnitSelect: document.getElementById("task-unit-select"),
+  taskNameInput: document.getElementById("task-name-input"),
+  taskDateInput: document.getElementById("task-date-input"),
+  taskSubmitBtn: document.getElementById("task-submit-btn"),
+  taskCancelEditBtn: document.getElementById("task-cancel-edit-btn"),
+  taskFormMessage: document.getElementById("task-form-message"),
 
-  myRequestsPanel: document.getElementById("my-requests-panel"),
-  myRequestsList: document.getElementById("my-requests-list"),
-  noMyRequests: document.getElementById("no-my-requests"),
+  pendingReportsList: document.getElementById("pending-reports-list"),
+  noPendingReports: document.getElementById("no-pending-reports"),
 
-  submitRequestPanel: document.getElementById("submit-request-panel"),
-  reqCourseSelect: document.getElementById("req-course-select"),
-  reqSubjectSelect: document.getElementById("req-subject-select"),
-  reqChapterSelect: document.getElementById("req-chapter-select"),
-  reqTaskSelect: document.getElementById("req-task-select"),
-  reqCurrentStatus: document.getElementById("req-current-status"),
-  reqStatusSelect: document.getElementById("req-status-select"),
-  reqSubmitBtn: document.getElementById("req-submit-btn"),
-  reqFormMessage: document.getElementById("req-form-message"),
-  reqSearchInput: document.getElementById("req-search-input"),
-  reqSearchResults: document.getElementById("req-search-results"),
+  manageTasksList: document.getElementById("manage-tasks-list"),
+  noManageTasks: document.getElementById("no-manage-tasks"),
 
   statTotal: document.getElementById("stat-total"),
   statDone: document.getElementById("stat-done"),
@@ -119,11 +117,13 @@ const el = {
 
 let session = loadSession();
 let allTasks = [];
-let allRequests = [];
+let allCourseUnits = [];
+let allStudents = [];
 let currentStudent = null;
 let currentStatusFilter = "all";
 let currentSearch = "";
 let selectedLoginUser = null;
+let editingTaskId = null;
 
 let currentView = "overview";
 let dashboardMode = "list";
@@ -282,9 +282,7 @@ function enterApp() {
   el.appView.classList.remove("hidden");
   renderStatusBar();
   el.studentToolbar.classList.toggle("hidden", session.role !== "家長");
-  el.requestsPanel.classList.toggle("hidden", session.role !== "家長");
-  el.myRequestsPanel.classList.toggle("hidden", session.role !== "學生");
-  el.submitRequestPanel.classList.toggle("hidden", session.role !== "學生");
+  el.navManageBtn.classList.toggle("hidden", session.role !== "家長");
   loadData();
 }
 
@@ -317,19 +315,21 @@ function applyViewVisibility() {
   const dataLoaded = loadingHidden && errorHidden;
   el.viewOverview.classList.toggle("hidden", !(dataLoaded && currentView === "overview"));
   el.viewTasks.classList.toggle("hidden", !(dataLoaded && currentView === "tasks"));
-  el.viewRequests.classList.toggle("hidden", !(dataLoaded && currentView === "requests"));
+  el.viewManage.classList.toggle("hidden", !(dataLoaded && currentView === "manage"));
 }
 
 // ---------- Data loading ----------
 
 function loadData() {
   showLoading();
-  Promise.all([Api.getTasks(session.name, session.role), Api.getRequests(session.name, session.role)])
-    .then(([tasksRes, requestsRes]) => {
+  Promise.all([Api.getTasks(session.name, session.role), Api.getCourseUnits(), Api.getUsers()])
+    .then(([tasksRes, courseUnitsRes, usersRes]) => {
       if (!tasksRes.ok) throw new Error(tasksRes.error || "讀取任務失敗");
-      if (!requestsRes.ok) throw new Error(requestsRes.error || "讀取申請紀錄失敗");
+      if (!courseUnitsRes.ok) throw new Error(courseUnitsRes.error || "讀取課程單元失敗");
+      if (!usersRes.ok) throw new Error(usersRes.error || "讀取使用者失敗");
       allTasks = tasksRes.tasks;
-      allRequests = requestsRes.requests;
+      allCourseUnits = courseUnitsRes.units;
+      allStudents = usersRes.users.filter((u) => u.role === "學生");
 
       if (session.role === "家長") {
         const students = [...new Set(allTasks.map((t) => t.student).filter(Boolean))];
@@ -343,6 +343,7 @@ function loadData() {
         currentStudent = session.name;
       }
 
+      populateTaskFormOptions();
       renderAll();
       showData();
     })
@@ -362,7 +363,7 @@ function showLoading() {
   el.errorState.classList.add("hidden");
   el.viewOverview.classList.add("hidden");
   el.viewTasks.classList.add("hidden");
-  el.viewRequests.classList.add("hidden");
+  el.viewManage.classList.add("hidden");
 }
 
 function showError(err) {
@@ -370,7 +371,7 @@ function showError(err) {
   el.errorState.classList.remove("hidden");
   el.viewOverview.classList.add("hidden");
   el.viewTasks.classList.add("hidden");
-  el.viewRequests.classList.add("hidden");
+  el.viewManage.classList.add("hidden");
   el.errorMessage.textContent = err && err.message
     ? `讀取資料失敗（${err.message}），請確認網路連線或稍後再試。`
     : "讀取資料失敗，請確認網路連線或稍後再試。";
@@ -400,8 +401,8 @@ function renderAll() {
   renderOverview(studentTasks);
   renderSubjects();
   renderCalendar();
-  renderRequestPanels();
-  renderRequestForm();
+  renderPendingReports();
+  renderManageTasksList();
 }
 
 function renderSummary(tasks) {
@@ -454,7 +455,7 @@ function getFilteredTasks() {
   return getStudentTasks().filter((t) => {
     if (currentStatusFilter !== "all" && t.status !== currentStatusFilter) return false;
     if (!search) return true;
-    const haystack = `${t.course} ${t.subject} ${t.chapter} ${t.task}`.toLowerCase();
+    const haystack = `${t.course} ${t.unit} ${t.task}`.toLowerCase();
     return haystack.includes(search);
   });
 }
@@ -503,26 +504,18 @@ function buildCourseBlock(course, tasks) {
   `;
   block.appendChild(header);
 
-  const bySubject = groupBy(tasks, "subject");
-  for (const [subject, subjectTasks] of bySubject) {
-    const heading = document.createElement("h3");
-    heading.className = "subject-heading";
-    heading.textContent = subject;
-    block.appendChild(heading);
-
-    const container = document.createElement("div");
-    container.className = "subjects-container";
-    const byChapter = groupBy(subjectTasks, "chapter");
-    for (const [chapter, chapterTasks] of byChapter) {
-      container.appendChild(buildChapterCard(chapter, chapterTasks));
-    }
-    block.appendChild(container);
+  const container = document.createElement("div");
+  container.className = "subjects-container";
+  const byUnit = groupBy(tasks, "unit");
+  for (const [unit, unitTasks] of byUnit) {
+    container.appendChild(buildUnitCard(unit, unitTasks));
   }
+  block.appendChild(container);
 
   return block;
 }
 
-function buildChapterCard(chapter, tasks) {
+function buildUnitCard(unit, tasks) {
   const total = tasks.length;
   const done = tasks.filter((t) => t.status === "2").length;
   const percent = total ? Math.round((done / total) * 100) : 0;
@@ -534,7 +527,7 @@ function buildChapterCard(chapter, tasks) {
   header.className = "subject-header";
   header.innerHTML = `
     <div class="subject-title-group">
-      <h4 class="subject-title">${escapeHtml(chapter)}</h4>
+      <h4 class="subject-title">${escapeHtml(unit)}</h4>
       <div class="subject-mini-progress">
         <div class="subject-mini-progress-fill" style="width:${percent}%"></div>
       </div>
@@ -552,39 +545,58 @@ function buildChapterCard(chapter, tasks) {
   return card;
 }
 
-function buildTaskListSimple(tasks) {
-  const list = document.createElement("div");
-  list.className = "task-list-mobile";
-  for (const t of tasks) {
-    const item = document.createElement("div");
-    item.className = "task-list-item";
-    item.innerHTML = `
-      <div class="task-list-item-text">
-        <div class="task-list-item-type">${escapeHtml(t.task)}</div>
-      </div>
-      ${statusBadge(t.status)}
-    `;
-    list.appendChild(item);
+function reportActionHtml(t) {
+  if (session.role !== "學生") {
+    return t.reportStatus ? reviewStatusBadge(t.reportStatus) : "";
   }
-  return list;
+  if (t.status === "2") return "";
+  if (t.reportStatus === "待審核") {
+    return `<span class="status-badge status-pending">回報審核中</span>`;
+  }
+  const label = t.reportStatus === "已拒絕" ? "已退回，重新回報" : "回報完成";
+  return `<button class="report-btn" data-id="${t.id}">${escapeHtml(label)}</button>`;
+}
+
+function buildTaskListItem(t, showCourse) {
+  const item = document.createElement("div");
+  item.className = "task-list-item";
+  item.innerHTML = `
+    <div class="task-list-item-text">
+      ${showCourse ? `<div class="task-list-item-course">${escapeHtml(t.course)}</div>` : ""}
+      <div class="task-list-item-chapter">${escapeHtml(t.unit)}</div>
+      <div class="task-list-item-type">${escapeHtml(t.task)}</div>
+    </div>
+    <div class="task-list-item-actions">
+      ${statusBadge(t.status)}
+      ${reportActionHtml(t)}
+    </div>
+  `;
+  const reportBtn = item.querySelector(".report-btn");
+  if (reportBtn) {
+    reportBtn.addEventListener("click", () => {
+      reportBtn.disabled = true;
+      Api.reportTask(session.name, t.id)
+        .then((res) => {
+          if (!res.ok) alert(res.error || "回報失敗");
+          loadData();
+        })
+        .catch((err) => alert(`回報失敗（${err.message}）`));
+    });
+  }
+  return item;
 }
 
 function buildTaskListMobile(tasks) {
   const list = document.createElement("div");
   list.className = "task-list-mobile";
-  for (const t of tasks) {
-    const item = document.createElement("div");
-    item.className = "task-list-item";
-    item.innerHTML = `
-      <div class="task-list-item-text">
-        <div class="task-list-item-course">${escapeHtml(t.course)}</div>
-        <div class="task-list-item-chapter">${escapeHtml(t.chapter)}</div>
-        <div class="task-list-item-type">${escapeHtml(t.task)}</div>
-      </div>
-      ${statusBadge(t.status)}
-    `;
-    list.appendChild(item);
-  }
+  for (const t of tasks) list.appendChild(buildTaskListItem(t, true));
+  return list;
+}
+
+function buildTaskListSimple(tasks) {
+  const list = document.createElement("div");
+  list.className = "task-list-mobile";
+  for (const t of tasks) list.appendChild(buildTaskListItem(t, false));
   return list;
 }
 
@@ -684,7 +696,7 @@ function renderCalendar() {
     const more = dayTasks.length - shown.length;
     cell.innerHTML = `
       <span class="calendar-day-number">${d}</span>
-      ${shown.map((t) => `<span class="calendar-day-chip status-badge status-${t.status}">${escapeHtml(t.chapter)}</span>`).join("")}
+      ${shown.map((t) => `<span class="calendar-day-chip status-badge status-${t.status}">${escapeHtml(t.unit)}</span>`).join("")}
       ${more > 0 ? `<span class="calendar-day-more">+${more}</span>` : ""}
     `;
     cell.addEventListener("click", () => {
@@ -711,7 +723,7 @@ function renderCalendar() {
   }
 }
 
-// ---------- Request panels (待審核 / 我的申請紀錄) ----------
+// ---------- Shared helpers ----------
 
 function formatTime(value) {
   if (!value) return "";
@@ -725,241 +737,185 @@ function reviewStatusBadge(reviewStatus) {
   return `<span class="status-badge ${cls}">${escapeHtml(reviewStatus)}</span>`;
 }
 
-function buildRequestItem(r, showActions) {
-  const item = document.createElement("div");
-  item.className = "request-item";
-  item.innerHTML = `
-    <div class="request-item-info">
-      <p class="request-item-title">${escapeHtml(r.course)}・${escapeHtml(r.subject)}・${escapeHtml(r.chapter)}</p>
-      <p class="request-item-meta">${escapeHtml(r.applicant)} ・ ${formatTime(r.time)}</p>
-      <p class="request-item-change">
-        ${statusBadge(r.oldStatus)} → ${statusBadge(r.newStatus)}
-        ${showActions ? "" : reviewStatusBadge(r.reviewStatus)}
-      </p>
-    </div>
-    ${showActions ? `<div class="request-item-actions">
-      <button class="approve-btn" data-id="${r.requestId}" data-decision="核准">核准</button>
-      <button class="reject-btn" data-id="${r.requestId}" data-decision="拒絕">拒絕</button>
-    </div>` : ""}
-  `;
-  if (showActions) {
-    item.querySelectorAll("button[data-decision]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        btn.closest(".request-item-actions").querySelectorAll("button").forEach((b) => (b.disabled = true));
-        Api.reviewRequest(r.requestId, btn.dataset.decision, session.name)
-          .then((res) => {
-            if (!res.ok) {
-              alert(res.error || "審核失敗");
-              loadData();
-              return;
-            }
-            loadData();
-          })
-          .catch((err) => alert(`審核失敗（${err.message}）`));
-      });
-    });
-  }
-  return item;
-}
-
-function renderRequestPanels() {
-  if (session.role === "家長") {
-    const pending = allRequests.filter((r) => r.reviewStatus === "待審核");
-    el.pendingRequestsList.innerHTML = "";
-    if (pending.length === 0) {
-      el.noPendingRequests.classList.remove("hidden");
-    } else {
-      el.noPendingRequests.classList.add("hidden");
-      pending.forEach((r) => el.pendingRequestsList.appendChild(buildRequestItem(r, true)));
-    }
-  } else if (session.role === "學生") {
-    el.myRequestsList.innerHTML = "";
-    if (allRequests.length === 0) {
-      el.noMyRequests.classList.remove("hidden");
-    } else {
-      el.noMyRequests.classList.add("hidden");
-      allRequests.forEach((r) => el.myRequestsList.appendChild(buildRequestItem(r, false)));
-    }
-  }
-}
-
-// ---------- Submit request form (學生：課程→科目→章節→任務) ----------
-
 function fillSelect(select, options, placeholder) {
   select.innerHTML = `<option value="">${placeholder}</option>` +
     options.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
 }
 
-function renderRequestForm() {
-  if (session.role !== "學生") return;
-  const courses = [...new Set(allTasks.map((t) => t.course))];
-  fillSelect(el.reqCourseSelect, courses, "選擇課程");
-  el.reqSubjectSelect.innerHTML = '<option value="">選擇科目</option>';
-  el.reqChapterSelect.innerHTML = '<option value="">選擇章節</option>';
-  el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
-  [el.reqSubjectSelect, el.reqChapterSelect, el.reqTaskSelect, el.reqStatusSelect].forEach((s) => (s.disabled = true));
-  el.reqSubmitBtn.disabled = true;
-  el.reqCurrentStatus.classList.add("hidden");
-  el.reqFormMessage.classList.add("hidden");
-  el.reqStatusSelect.value = "";
-  el.reqSearchInput.value = "";
-  el.reqSearchResults.innerHTML = "";
-  el.reqSearchResults.classList.add("hidden");
+// ---------- 任務管理（家長）：新增／編輯任務表單 ----------
+
+function populateTaskFormOptions() {
+  fillSelect(el.taskStudentSelect, allStudents.map((s) => s.name), "選擇學生");
+  const courses = [...new Set(allCourseUnits.map((u) => u.course))];
+  fillSelect(el.taskCourseSelect, courses, "選擇課程");
 }
 
-el.reqSearchInput.addEventListener("input", () => {
-  const query = el.reqSearchInput.value.trim().toLowerCase();
-  el.reqSearchResults.innerHTML = "";
-  if (!query) {
-    el.reqSearchResults.classList.add("hidden");
-    return;
-  }
-  const matches = allTasks
-    .filter((t) => !t.pendingStatus)
-    .filter((t) => `${t.course} ${t.subject} ${t.chapter} ${t.task}`.toLowerCase().includes(query))
-    .slice(0, 8);
-
-  if (matches.length === 0) {
-    el.reqSearchResults.innerHTML = '<p class="no-results">找不到符合的任務</p>';
-    el.reqSearchResults.classList.remove("hidden");
-    return;
-  }
-
-  matches.forEach((t) => {
-    const item = document.createElement("div");
-    item.className = "req-search-result-item";
-    item.innerHTML = `${escapeHtml(t.course)}・${escapeHtml(t.subject)}・${escapeHtml(t.chapter)}・${escapeHtml(t.task)} ${statusBadge(t.status)}`;
-    item.addEventListener("click", () => {
-      selectTaskFully(t);
-      el.reqSearchInput.value = "";
-      el.reqSearchResults.innerHTML = "";
-      el.reqSearchResults.classList.add("hidden");
-    });
-    el.reqSearchResults.appendChild(item);
-  });
-  el.reqSearchResults.classList.remove("hidden");
-});
-
-let selectedRequestTask = null;
-
-function populateSubjects(course) {
-  el.reqChapterSelect.innerHTML = '<option value="">選擇章節</option>';
-  el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
-  el.reqSubjectSelect.disabled = !course;
-  el.reqChapterSelect.disabled = true;
-  el.reqTaskSelect.disabled = true;
-  resetTaskSelection();
+function populateTaskUnitSelect(course) {
+  el.taskUnitSelect.disabled = !course;
   if (!course) {
-    el.reqSubjectSelect.innerHTML = '<option value="">選擇科目</option>';
+    el.taskUnitSelect.innerHTML = '<option value="">選擇單元</option>';
     return;
   }
-  const subjects = [...new Set(allTasks.filter((t) => t.course === course).map((t) => t.subject))];
-  fillSelect(el.reqSubjectSelect, subjects, "選擇科目");
+  const units = allCourseUnits.filter((u) => u.course === course);
+  el.taskUnitSelect.innerHTML =
+    '<option value="">選擇單元</option>' +
+    units
+      .map((u) => `<option value="${escapeHtml(u.unit)}">${escapeHtml(`${u.unitCode} ${u.unit}`.trim())}</option>`)
+      .join("");
 }
 
-function populateChapters(course, subject) {
-  el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
-  el.reqChapterSelect.disabled = !subject;
-  el.reqTaskSelect.disabled = true;
-  resetTaskSelection();
-  if (!subject) {
-    el.reqChapterSelect.innerHTML = '<option value="">選擇章節</option>';
+el.taskCourseSelect.addEventListener("change", () => populateTaskUnitSelect(el.taskCourseSelect.value));
+
+function resetTaskForm() {
+  editingTaskId = null;
+  el.taskFormTitle.textContent = "新增任務";
+  el.taskSubmitBtn.textContent = "新增任務";
+  el.taskCancelEditBtn.classList.add("hidden");
+  el.taskStudentSelect.value = "";
+  el.taskCourseSelect.value = "";
+  populateTaskUnitSelect("");
+  el.taskNameInput.value = "";
+  el.taskDateInput.value = "";
+  el.taskFormMessage.classList.add("hidden");
+}
+
+function startEditTask(t) {
+  editingTaskId = t.id;
+  el.taskFormTitle.textContent = "編輯任務";
+  el.taskSubmitBtn.textContent = "更新任務";
+  el.taskCancelEditBtn.classList.remove("hidden");
+  el.taskStudentSelect.value = t.student;
+  el.taskCourseSelect.value = t.course;
+  populateTaskUnitSelect(t.course);
+  el.taskUnitSelect.value = t.unit;
+  el.taskNameInput.value = t.task;
+  el.taskDateInput.value = t.date || "";
+  el.taskFormMessage.classList.add("hidden");
+  el.taskFormPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+el.taskCancelEditBtn.addEventListener("click", resetTaskForm);
+
+el.taskSubmitBtn.addEventListener("click", () => {
+  const payload = {
+    student: el.taskStudentSelect.value,
+    course: el.taskCourseSelect.value,
+    unit: el.taskUnitSelect.value,
+    task: el.taskNameInput.value.trim(),
+    date: el.taskDateInput.value,
+  };
+  if (!payload.student || !payload.course || !payload.unit || !payload.task) {
+    el.taskFormMessage.textContent = "請完整填寫學生、課程、單元與任務名稱。";
+    el.taskFormMessage.classList.remove("hidden");
     return;
   }
-  const chapters = [...new Set(allTasks.filter((t) => t.course === course && t.subject === subject).map((t) => t.chapter))];
-  fillSelect(el.reqChapterSelect, chapters, "選擇章節");
-}
-
-function populateTasks(course, subject, chapter) {
-  el.reqTaskSelect.disabled = !chapter;
-  resetTaskSelection();
-  if (!chapter) {
-    el.reqTaskSelect.innerHTML = '<option value="">選擇任務</option>';
-    return;
-  }
-  const candidates = allTasks.filter(
-    (t) => t.course === course && t.subject === subject && t.chapter === chapter && !t.pendingStatus
-  );
-  el.reqTaskSelect.innerHTML =
-    '<option value="">選擇任務</option>' +
-    candidates.map((t) => `<option value="${escapeHtml(String(t.seq))}">${escapeHtml(t.task)}</option>`).join("");
-  if (candidates.length === 0) {
-    el.reqFormMessage.textContent = "這個章節底下的任務都已經有審核中的申請。";
-    el.reqFormMessage.classList.remove("hidden");
-  } else {
-    el.reqFormMessage.classList.add("hidden");
-  }
-}
-
-function selectTaskBySeq(seq) {
-  resetTaskSelection();
-  if (!seq) return;
-  selectedRequestTask = allTasks.find((t) => String(t.seq) === seq) || null;
-  if (!selectedRequestTask) return;
-  el.reqCurrentStatus.textContent = `目前狀態：${STATUS_LABELS[selectedRequestTask.status]}`;
-  el.reqCurrentStatus.classList.remove("hidden");
-  el.reqStatusSelect.disabled = false;
-  [...el.reqStatusSelect.options].forEach((opt) => {
-    if (!opt.value) return;
-    opt.hidden = opt.value === selectedRequestTask.status;
-  });
-}
-
-function selectTaskFully(task) {
-  el.reqCourseSelect.value = task.course;
-  populateSubjects(task.course);
-  el.reqSubjectSelect.value = task.subject;
-  populateChapters(task.course, task.subject);
-  el.reqChapterSelect.value = task.chapter;
-  populateTasks(task.course, task.subject, task.chapter);
-  el.reqTaskSelect.value = String(task.seq);
-  selectTaskBySeq(String(task.seq));
-  el.reqStatusSelect.focus();
-}
-
-el.reqCourseSelect.addEventListener("change", () => populateSubjects(el.reqCourseSelect.value));
-
-el.reqSubjectSelect.addEventListener("change", () =>
-  populateChapters(el.reqCourseSelect.value, el.reqSubjectSelect.value)
-);
-
-el.reqChapterSelect.addEventListener("change", () =>
-  populateTasks(el.reqCourseSelect.value, el.reqSubjectSelect.value, el.reqChapterSelect.value)
-);
-
-el.reqTaskSelect.addEventListener("change", () => selectTaskBySeq(el.reqTaskSelect.value));
-
-el.reqStatusSelect.addEventListener("change", () => {
-  el.reqSubmitBtn.disabled = !selectedRequestTask || !el.reqStatusSelect.value;
-});
-
-function resetTaskSelection() {
-  selectedRequestTask = null;
-  el.reqCurrentStatus.classList.add("hidden");
-  el.reqStatusSelect.disabled = true;
-  el.reqStatusSelect.value = "";
-  el.reqSubmitBtn.disabled = true;
-}
-
-el.reqSubmitBtn.addEventListener("click", () => {
-  if (!selectedRequestTask || !el.reqStatusSelect.value) return;
-  el.reqSubmitBtn.disabled = true;
-  Api.submitRequest(session.name, selectedRequestTask.seq, el.reqStatusSelect.value)
+  el.taskSubmitBtn.disabled = true;
+  const call = editingTaskId
+    ? Api.updateTask({ id: editingTaskId, editor: session.name, ...payload })
+    : Api.createTask({ creator: session.name, ...payload });
+  call
     .then((res) => {
+      el.taskSubmitBtn.disabled = false;
       if (!res.ok) {
-        el.reqFormMessage.textContent = res.error || "申請失敗";
-        el.reqFormMessage.classList.remove("hidden");
-        el.reqSubmitBtn.disabled = false;
+        el.taskFormMessage.textContent = res.error || "操作失敗";
+        el.taskFormMessage.classList.remove("hidden");
         return;
       }
+      resetTaskForm();
       loadData();
     })
     .catch((err) => {
-      el.reqFormMessage.textContent = `申請失敗（${err.message}）`;
-      el.reqFormMessage.classList.remove("hidden");
-      el.reqSubmitBtn.disabled = false;
+      el.taskSubmitBtn.disabled = false;
+      el.taskFormMessage.textContent = `操作失敗（${err.message}）`;
+      el.taskFormMessage.classList.remove("hidden");
     });
 });
+
+// ---------- 任務管理（家長）：待回報審核 ----------
+
+function buildPendingReportItem(t) {
+  const item = document.createElement("div");
+  item.className = "request-item";
+  item.innerHTML = `
+    <div class="request-item-info">
+      <p class="request-item-title">${escapeHtml(t.course)}・${escapeHtml(t.unit)}・${escapeHtml(t.task)}</p>
+      <p class="request-item-meta">${escapeHtml(t.student)} ・ ${formatTime(t.reportTime)}</p>
+    </div>
+    <div class="request-item-actions">
+      <button class="approve-btn" data-decision="核准">核准</button>
+      <button class="reject-btn" data-decision="拒絕">拒絕</button>
+    </div>
+  `;
+  item.querySelectorAll("button[data-decision]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      item.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      Api.reviewTask(t.id, btn.dataset.decision, session.name)
+        .then((res) => {
+          if (!res.ok) alert(res.error || "審核失敗");
+          loadData();
+        })
+        .catch((err) => alert(`審核失敗（${err.message}）`));
+    });
+  });
+  return item;
+}
+
+function renderPendingReports() {
+  if (session.role !== "家長") return;
+  const pending = allTasks.filter((t) => t.reportStatus === "待審核");
+  el.pendingReportsList.innerHTML = "";
+  if (pending.length === 0) {
+    el.noPendingReports.classList.remove("hidden");
+  } else {
+    el.noPendingReports.classList.add("hidden");
+    pending.forEach((t) => el.pendingReportsList.appendChild(buildPendingReportItem(t)));
+  }
+}
+
+// ---------- 任務管理（家長）：任務清單管理 ----------
+
+function buildManageTaskItem(t) {
+  const item = document.createElement("div");
+  item.className = "request-item";
+  item.innerHTML = `
+    <div class="request-item-info">
+      <p class="request-item-title">${escapeHtml(t.course)}・${escapeHtml(t.unit)}・${escapeHtml(t.task)}</p>
+      <p class="request-item-meta">
+        ${t.date ? escapeHtml(t.date) : "未排定日期"} ${statusBadge(t.status)} ${t.reportStatus ? reviewStatusBadge(t.reportStatus) : ""}
+      </p>
+    </div>
+    <div class="request-item-actions">
+      <button class="secondary-btn" data-action="edit">編輯</button>
+      <button class="reject-btn" data-action="delete">刪除</button>
+    </div>
+  `;
+  item.querySelector('[data-action="edit"]').addEventListener("click", () => startEditTask(t));
+  item.querySelector('[data-action="delete"]').addEventListener("click", () => {
+    if (!confirm(`確定要刪除「${t.task}」這筆任務嗎？`)) return;
+    Api.deleteTask({ id: t.id, editor: session.name })
+      .then((res) => {
+        if (!res.ok) {
+          alert(res.error || "刪除失敗");
+          return;
+        }
+        loadData();
+      })
+      .catch((err) => alert(`刪除失敗（${err.message}）`));
+  });
+  return item;
+}
+
+function renderManageTasksList() {
+  if (session.role !== "家長") return;
+  const tasks = allTasks.filter((t) => t.student === currentStudent);
+  el.manageTasksList.innerHTML = "";
+  if (tasks.length === 0) {
+    el.noManageTasks.classList.remove("hidden");
+  } else {
+    el.noManageTasks.classList.add("hidden");
+    tasks.forEach((t) => el.manageTasksList.appendChild(buildManageTaskItem(t)));
+  }
+}
 
 // ---------- Filters ----------
 

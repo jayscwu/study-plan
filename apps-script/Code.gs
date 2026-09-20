@@ -1,19 +1,22 @@
 /**
  * 學習計畫進度追蹤 - Apps Script 後端
  *
- * 部署方式：
- * 1. 開啟這份 Google Sheet → 擴充功能(Extensions) → Apps Script
+ * 部署方式（獨立專案，不綁定任何一份試算表）：
+ * 1. 前往 https://script.google.com → 新增專案
  * 2. 刪除預設的程式碼，貼上這個檔案全部內容
- * 3. 右上角「部署」→「新增部署作業」→ 類型選「網頁應用程式」
+ * 3. 把下面三個 `_FILE_ID` 常數換成你自己「登入帳號」「課程單元」「學習任務」三份 Google Sheet 的檔案 ID
+ *    （網址 https://docs.google.com/spreadsheets/d/這一段/edit 裡的那一段）
+ * 4. 右上角「部署」→「新增部署作業」→ 類型選「網頁應用程式」
  *    - 執行身分(Execute as)：我 (你自己的帳號)
  *    - 存取權(Who has access)：所有人 (Anyone)
- * 4. 授權後會拿到一個 https://script.google.com/macros/s/xxx/exec 網址
- * 5. 把這個網址貼到前端 api.js 的 APPS_SCRIPT_URL
+ * 5. 第一次執行會跳出 Google 授權畫面，請同意存取這三份 Sheet
+ * 6. 部署後會拿到一個 https://script.google.com/macros/s/xxx/exec 網址
+ * 7. 把這個網址貼到前端 api.js 的 APPS_SCRIPT_URL
  */
 
-const TASKS_SHEET = "讀書計畫";
-const ACCOUNTS_SHEET = "登入帳號";
-const REQUESTS_SHEET = "狀態變更申請";
+const ACCOUNTS_FILE_ID = "1wF5p5oK5QKS0Wn-qNy6t1n1RvBU45yi_Nu1aEKKBBxU";
+const COURSE_UNITS_FILE_ID = "1D7-F_QI8TSn-M1prbR932YNyTI4DKE6VLpF-EOdRETM";
+const TASKS_FILE_ID = "1uZTPoOxmQCvoNus2RBxEgzjdXctyAcEd5dmV5QcjBHg";
 
 const STATUS_LABELS = {
   "0": "0-待執行",
@@ -38,18 +41,14 @@ function formatTaskDate(value, timeZone) {
   return null;
 }
 
-function getSheet(name) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    // 容錯：分頁名稱前後可能有多打的空白
-    sheet = ss.getSheets().find((s) => s.getName().trim() === name.trim());
-  }
-  if (!sheet) {
-    const actual = ss.getSheets().map((s) => s.getName()).join("、");
-    throw new Error(`找不到分頁：${name}（目前分頁有：${actual}）`);
-  }
-  return sheet;
+function parseTaskDate(value) {
+  if (!value) return "";
+  const parsed = new Date(`${value}T00:00:00`);
+  return isNaN(parsed.getTime()) ? "" : parsed;
+}
+
+function openSheet(fileId) {
+  return SpreadsheetApp.openById(fileId).getSheets()[0];
 }
 
 function sheetRows(sheet) {
@@ -76,7 +75,7 @@ function doGet(e) {
     const action = e.parameter.action;
     if (action === "users") return json(handleUsers());
     if (action === "tasks") return json(handleTasks(e.parameter.name, e.parameter.role));
-    if (action === "requests") return json(handleRequests(e.parameter.name, e.parameter.role));
+    if (action === "courseUnits") return json(handleCourseUnits());
     return json({ ok: false, error: "未知的 action" });
   } catch (err) {
     return json({ ok: false, error: String(err) });
@@ -88,18 +87,40 @@ function doPost(e) {
     const action = e.parameter.action;
     const body = JSON.parse(e.postData.contents || "{}");
     if (action === "login") return json(handleLogin(body.name, body.pin));
-    if (action === "submitRequest")
-      return json(handleSubmitRequest(body.student, body.seq, body.newStatus));
-    if (action === "reviewRequest")
-      return json(handleReviewRequest(body.requestId, body.decision, body.reviewer));
+    if (action === "createTask") return json(handleCreateTask(body));
+    if (action === "updateTask") return json(handleUpdateTask(body));
+    if (action === "deleteTask") return json(handleDeleteTask(body));
+    if (action === "reportTask") return json(handleReportTask(body));
+    if (action === "reviewTask") return json(handleReviewTask(body));
     return json({ ok: false, error: "未知的 action" });
   } catch (err) {
     return json({ ok: false, error: String(err) });
   }
 }
 
+// ---------- 帳號 ----------
+
+function getAccountRows() {
+  return sheetRows(openSheet(ACCOUNTS_FILE_ID));
+}
+
+function findAccount(name) {
+  const rows = getAccountRows();
+  return rows.find((r) => String(r["姓名"]).trim() === String(name || "").trim());
+}
+
+function isParent(name) {
+  const account = findAccount(name);
+  return !!account && String(account["角色"]).trim() === "家長";
+}
+
+function isStudent(name) {
+  const account = findAccount(name);
+  return !!account && String(account["角色"]).trim() === "學生";
+}
+
 function handleUsers() {
-  const rows = sheetRows(getSheet(ACCOUNTS_SHEET));
+  const rows = getAccountRows();
   return {
     ok: true,
     users: rows.map((r) => ({ name: String(r["姓名"]).trim(), role: String(r["角色"]).trim() })),
@@ -109,141 +130,184 @@ function handleUsers() {
 function handleLogin(name, pin) {
   name = String(name || "").trim();
   pin = String(pin || "").trim();
-  const rows = sheetRows(getSheet(ACCOUNTS_SHEET));
-  const account = rows.find((r) => String(r["姓名"]).trim() === name);
+  const account = findAccount(name);
   if (!account || String(account["PIN"]).trim() !== pin) {
     return { ok: false, error: "姓名或 PIN 碼不正確" };
   }
   return { ok: true, name, role: String(account["角色"]).trim() };
 }
 
+// ---------- 課程單元 ----------
+
+function handleCourseUnits() {
+  const rows = sheetRows(openSheet(COURSE_UNITS_FILE_ID));
+  const units = rows.map((r) => ({
+    course: String(r["課程名稱"] || "").trim(),
+    unitCode: String(r["單元代號"] || "").trim(),
+    unit: String(r["單元名稱"] || "").trim(),
+    order: r["排序"] === "" ? null : Number(r["排序"]),
+  }));
+  return { ok: true, units };
+}
+
+function findCourseUnit(course, unit) {
+  const rows = sheetRows(openSheet(COURSE_UNITS_FILE_ID));
+  return rows.find(
+    (r) =>
+      String(r["課程名稱"]).trim() === String(course || "").trim() &&
+      String(r["單元名稱"]).trim() === String(unit || "").trim()
+  );
+}
+
+// ---------- 學習任務 ----------
+
 function handleTasks(name, role) {
-  const taskRows = sheetRows(getSheet(TASKS_SHEET));
-  const requestRows = sheetRows(getSheet(REQUESTS_SHEET));
-
-  const pendingBySeq = {};
-  requestRows.forEach((r) => {
-    if (String(r["審核狀態"]).trim() === "待審核") {
-      pendingBySeq[String(r["項次"])] = statusCode(r["申請新狀態"]);
-    }
-  });
-
-  let filtered = taskRows;
+  const rows = sheetRows(openSheet(TASKS_FILE_ID));
+  let filtered = rows;
   if (role === "學生") {
-    filtered = taskRows.filter((r) => String(r["學生"]).trim() === String(name).trim());
+    filtered = rows.filter((r) => String(r["學生"]).trim() === String(name).trim());
   }
 
-  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  const tz = Session.getScriptTimeZone();
   const tasks = filtered.map((r) => ({
-    seq: r["項次"],
+    id: r.rowIndex,
     student: r["學生"],
-    course: r["課程"],
-    subject: r["科目"],
-    chapter: r["章節"],
-    task: r["任務"],
+    course: r["課程名稱"],
+    unit: r["單元名稱"],
+    task: r["任務名稱"],
     status: statusCode(r["狀態"]),
-    pendingStatus: pendingBySeq[String(r["項次"])] || null,
     date: formatTaskDate(r["預計學習日期"], tz),
+    reportStatus: r["回報狀態"] || "",
+    reportTime: r["回報時間"] || "",
+    reviewer: r["審核人"] || "",
+    reviewTime: r["審核時間"] || "",
+    createdBy: r["建立人"] || "",
   }));
 
   return { ok: true, tasks };
 }
 
-function handleRequests(name, role) {
-  const rows = sheetRows(getSheet(REQUESTS_SHEET));
-  let filtered = rows;
-  if (role === "學生") {
-    filtered = rows.filter((r) => String(r["申請人"]).trim() === String(name).trim());
-  }
-  const requests = filtered
-    .map((r) => ({
-      requestId: r.rowIndex,
-      time: r["申請時間"],
-      applicant: r["申請人"],
-      seq: r["項次"],
-      course: r["課程"],
-      subject: r["科目"],
-      chapter: r["章節"],
-      task: r["任務"],
-      oldStatus: statusCode(r["原狀態"]),
-      newStatus: statusCode(r["申請新狀態"]),
-      reviewStatus: r["審核狀態"],
-      reviewer: r["審核人"],
-      reviewTime: r["審核時間"],
-    }))
-    .sort((a, b) => new Date(b.time) - new Date(a.time));
-  return { ok: true, requests };
+function taskCol(header, name) {
+  return header.indexOf(name) + 1;
 }
 
-function handleSubmitRequest(student, seq, newStatus) {
-  student = String(student || "").trim();
-  seq = String(seq || "").trim();
-  if (!STATUS_LABELS[newStatus]) return { ok: false, error: "新狀態不合法" };
+function getTaskRow(id) {
+  const sheet = openSheet(TASKS_FILE_ID);
+  const header = sheet.getDataRange().getValues()[0];
+  id = Number(id);
+  if (!id || id < 2 || id > sheet.getLastRow()) return null;
+  const values = sheet.getRange(id, 1, 1, header.length).getValues()[0];
+  const obj = { rowIndex: id };
+  header.forEach((h, idx) => (obj[h] = values[idx]));
+  return { sheet, header, row: obj };
+}
 
-  const tasksSheet = getSheet(TASKS_SHEET);
-  const taskRows = sheetRows(tasksSheet);
-  const task = taskRows.find((r) => String(r["項次"]).trim() === seq);
-  if (!task) return { ok: false, error: "找不到這個任務" };
-  if (String(task["學生"]).trim() !== student) return { ok: false, error: "這不是你的任務" };
+function handleCreateTask(body) {
+  const creator = String(body.creator || "").trim();
+  const student = String(body.student || "").trim();
+  const course = String(body.course || "").trim();
+  const unit = String(body.unit || "").trim();
+  const task = String(body.task || "").trim();
 
-  const requestsSheet = getSheet(REQUESTS_SHEET);
-  const existing = sheetRows(requestsSheet);
-  const hasPending = existing.some(
-    (r) => String(r["項次"]).trim() === seq && String(r["審核狀態"]).trim() === "待審核"
-  );
-  if (hasPending) return { ok: false, error: "這項任務已經有審核中的申請" };
+  if (!isParent(creator)) return { ok: false, error: "沒有權限新增任務" };
+  if (!isStudent(student)) return { ok: false, error: "找不到這個學生" };
+  if (!course || !unit) return { ok: false, error: "請選擇課程與單元" };
+  if (!findCourseUnit(course, unit)) return { ok: false, error: "找不到這個課程/單元" };
+  if (!task) return { ok: false, error: "請輸入任務名稱" };
 
-  requestsSheet.appendRow([
-    new Date(),
+  const sheet = openSheet(TASKS_FILE_ID);
+  sheet.appendRow([
     student,
-    task["項次"],
-    task["課程"],
-    task["科目"],
-    task["章節"],
-    task["任務"],
-    task["狀態"],
-    STATUS_LABELS[newStatus],
-    "待審核",
+    course,
+    unit,
+    task,
+    STATUS_LABELS["0"],
+    parseTaskDate(body.date),
     "",
     "",
+    "",
+    "",
+    creator,
   ]);
 
   return { ok: true };
 }
 
-function handleReviewRequest(requestId, decision, reviewer) {
-  requestId = Number(requestId);
+function handleUpdateTask(body) {
+  const editor = String(body.editor || "").trim();
+  if (!isParent(editor)) return { ok: false, error: "沒有權限編輯任務" };
+
+  const found = getTaskRow(body.id);
+  if (!found) return { ok: false, error: "找不到這個任務" };
+
+  const student = String(body.student || "").trim();
+  const course = String(body.course || "").trim();
+  const unit = String(body.unit || "").trim();
+  const task = String(body.task || "").trim();
+
+  if (!isStudent(student)) return { ok: false, error: "找不到這個學生" };
+  if (!course || !unit || !findCourseUnit(course, unit)) return { ok: false, error: "找不到這個課程/單元" };
+  if (!task) return { ok: false, error: "請輸入任務名稱" };
+
+  const { sheet, header, row } = found;
+  sheet.getRange(row.rowIndex, taskCol(header, "學生")).setValue(student);
+  sheet.getRange(row.rowIndex, taskCol(header, "課程名稱")).setValue(course);
+  sheet.getRange(row.rowIndex, taskCol(header, "單元名稱")).setValue(unit);
+  sheet.getRange(row.rowIndex, taskCol(header, "任務名稱")).setValue(task);
+  sheet.getRange(row.rowIndex, taskCol(header, "預計學習日期")).setValue(parseTaskDate(body.date));
+
+  return { ok: true };
+}
+
+function handleDeleteTask(body) {
+  const editor = String(body.editor || "").trim();
+  if (!isParent(editor)) return { ok: false, error: "沒有權限刪除任務" };
+
+  const found = getTaskRow(body.id);
+  if (!found) return { ok: false, error: "找不到這個任務" };
+
+  found.sheet.deleteRow(found.row.rowIndex);
+  return { ok: true };
+}
+
+function handleReportTask(body) {
+  const student = String(body.student || "").trim();
+  const found = getTaskRow(body.id);
+  if (!found) return { ok: false, error: "找不到這個任務" };
+
+  const { sheet, header, row } = found;
+  if (String(row["學生"]).trim() !== student) return { ok: false, error: "這不是你的任務" };
+  if (statusCode(row["狀態"]) === "2") return { ok: false, error: "這個任務已經完成了" };
+  if (String(row["回報狀態"]).trim() === "待審核") return { ok: false, error: "這個任務已經在審核中" };
+
+  sheet.getRange(row.rowIndex, taskCol(header, "回報狀態")).setValue("待審核");
+  sheet.getRange(row.rowIndex, taskCol(header, "回報時間")).setValue(new Date());
+
+  return { ok: true };
+}
+
+function handleReviewTask(body) {
+  const reviewer = String(body.reviewer || "").trim();
+  const decision = body.decision;
   if (decision !== "核准" && decision !== "拒絕") return { ok: false, error: "審核決定不合法" };
+  if (!isParent(reviewer)) return { ok: false, error: "沒有權限審核" };
 
-  const requestsSheet = getSheet(REQUESTS_SHEET);
-  const header = requestsSheet.getDataRange().getValues()[0];
-  const col = (name) => header.indexOf(name) + 1;
+  const found = getTaskRow(body.id);
+  if (!found) return { ok: false, error: "找不到這個任務" };
 
-  const rowValues = requestsSheet.getRange(requestId, 1, 1, header.length).getValues()[0];
-  const rowObj = {};
-  header.forEach((h, idx) => (rowObj[h] = rowValues[idx]));
-
-  if (String(rowObj["審核狀態"]).trim() !== "待審核") {
-    return { ok: false, error: "這筆申請已經審核過了" };
+  const { sheet, header, row } = found;
+  if (String(row["回報狀態"]).trim() !== "待審核") {
+    return { ok: false, error: "這個任務目前沒有待審核的回報" };
   }
 
   if (decision === "核准") {
-    const tasksSheet = getSheet(TASKS_SHEET);
-    const taskValues = tasksSheet.getDataRange().getValues();
-    const taskHeader = taskValues[0];
-    const seqCol = taskHeader.indexOf("項次");
-    const statusCol = taskHeader.indexOf("狀態");
-    for (let i = 1; i < taskValues.length; i++) {
-      if (String(taskValues[i][seqCol]).trim() === String(rowObj["項次"]).trim()) {
-        tasksSheet.getRange(i + 1, statusCol + 1).setValue(rowObj["申請新狀態"]);
-        break;
-      }
-    }
+    sheet.getRange(row.rowIndex, taskCol(header, "狀態")).setValue(STATUS_LABELS["2"]);
+    sheet.getRange(row.rowIndex, taskCol(header, "回報狀態")).setValue("已核准");
+  } else {
+    sheet.getRange(row.rowIndex, taskCol(header, "回報狀態")).setValue("已拒絕");
   }
-
-  requestsSheet.getRange(requestId, col("審核狀態")).setValue(decision === "核准" ? "已核准" : "已拒絕");
-  requestsSheet.getRange(requestId, col("審核人")).setValue(reviewer || "");
-  requestsSheet.getRange(requestId, col("審核時間")).setValue(new Date());
+  sheet.getRange(row.rowIndex, taskCol(header, "審核人")).setValue(reviewer);
+  sheet.getRange(row.rowIndex, taskCol(header, "審核時間")).setValue(new Date());
 
   return { ok: true };
 }
