@@ -66,8 +66,9 @@
     <main id="main-content">
 
       <section id="loading-state" class="state-panel">
-        <div class="spinner"></div>
-        <p>正在讀取學習計畫資料...</p>
+        <div class="skeleton-block"></div>
+        <div class="skeleton-block"></div>
+        <div class="skeleton-block short"></div>
       </section>
 
       <section id="error-state" class="state-panel hidden">
@@ -141,6 +142,8 @@
       <!-- 學習列表頁籤 -->
       <section id="view-tasks" class="hidden">
 
+        <div id="tasks-course-tabs" class="course-tabs"></div>
+
         <section class="controls">
           <div class="status-filter" id="status-filter">
             <button class="filter-chip active" data-status="all">全部</button>
@@ -186,6 +189,7 @@
 
       <!-- 任務管理頁籤（家長專用） -->
       <section id="view-manage" class="hidden">
+        <div id="manage-course-tabs" class="course-tabs"></div>
         <section id="manage-tasks-tree"></section>
       </section>
 
@@ -195,9 +199,43 @@
       <p>資料來源：Google Sheet ・ 僅供學習進度檢視</p>
     </footer>
 
+    <button id="task-fab" class="task-fab hidden" aria-label="新增任務">+</button>
+
+    <!-- 批次新增任務彈窗 -->
+    <div id="task-modal-overlay" class="modal-overlay hidden">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h2 class="panel-title">新增任務</h2>
+          <button id="modal-close-btn" class="icon-btn" aria-label="關閉">✕</button>
+        </div>
+        <div class="request-form">
+          <select id="modal-student-select" class="student-select"></select>
+          <select id="modal-course-select" class="student-select"></select>
+          <select id="modal-unit-select" class="student-select"></select>
+        </div>
+        <div class="request-form">
+          <input type="text" id="modal-task-name" class="student-select" placeholder="任務名稱（如：練習本、練習卷）">
+          <input type="date" id="modal-task-date" class="student-select">
+          <select id="modal-task-slot" class="student-select">
+            <option value="整天">整天</option>
+            <option value="上午">上午</option>
+            <option value="下午">下午</option>
+            <option value="晚上">晚上</option>
+          </select>
+        </div>
+        <div class="request-form">
+          <button id="modal-add-btn" class="primary-btn">新增</button>
+          <button id="modal-done-btn" class="secondary-btn">完成</button>
+        </div>
+        <p id="modal-message" class="login-error hidden"></p>
+      </div>
+    </div>
+
   </div>
 
 </div>
+
+<div id="toast-container" class="toast-container"></div>
 
 <script src="api.js"></script>
 <script src="app.js"></script>

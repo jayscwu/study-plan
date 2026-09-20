@@ -76,7 +76,24 @@ const el = {
   listMode: document.getElementById("list-mode"),
   calendarMode: document.getElementById("calendar-mode"),
 
+  tasksCourseTabs: document.getElementById("tasks-course-tabs"),
+  manageCourseTabs: document.getElementById("manage-course-tabs"),
   manageTasksTree: document.getElementById("manage-tasks-tree"),
+
+  taskFab: document.getElementById("task-fab"),
+  taskModalOverlay: document.getElementById("task-modal-overlay"),
+  modalCloseBtn: document.getElementById("modal-close-btn"),
+  modalDoneBtn: document.getElementById("modal-done-btn"),
+  modalAddBtn: document.getElementById("modal-add-btn"),
+  modalStudentSelect: document.getElementById("modal-student-select"),
+  modalCourseSelect: document.getElementById("modal-course-select"),
+  modalUnitSelect: document.getElementById("modal-unit-select"),
+  modalTaskName: document.getElementById("modal-task-name"),
+  modalTaskDate: document.getElementById("modal-task-date"),
+  modalTaskSlot: document.getElementById("modal-task-slot"),
+  modalMessage: document.getElementById("modal-message"),
+
+  toastContainer: document.getElementById("toast-container"),
 
   statTotal: document.getElementById("stat-total"),
   statDone: document.getElementById("stat-done"),
@@ -111,6 +128,7 @@ let selectedLoginUser = null;
 let editingTaskId = null;
 let addingTaskUnit = null;
 let expandedUnits = new Set();
+let currentCourse = null;
 
 let currentView = "overview";
 let dashboardMode = "list";
@@ -270,6 +288,7 @@ function enterApp() {
   renderStatusBar();
   el.studentToolbar.classList.toggle("hidden", session.role !== "家長");
   el.navManageBtn.classList.toggle("hidden", session.role !== "家長");
+  updateFabVisibility();
   loadData();
 }
 
@@ -294,6 +313,12 @@ function setCurrentView(view) {
   [...el.mainNav.children].forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
   el.statusBarViewTitle.textContent = VIEW_TITLES[currentView];
   applyViewVisibility();
+  updateFabVisibility();
+}
+
+function updateFabVisibility() {
+  const show = session && session.role === "家長" && currentView === "manage";
+  el.taskFab.classList.toggle("hidden", !show);
 }
 
 function applyViewVisibility() {
@@ -307,8 +332,8 @@ function applyViewVisibility() {
 
 // ---------- Data loading ----------
 
-function loadData() {
-  showLoading();
+function loadData(silent) {
+  if (!silent) showLoading();
   Promise.all([Api.getTasks(session.name, session.role), Api.getCourseUnits(), Api.getUsers()])
     .then(([tasksRes, courseUnitsRes, usersRes]) => {
       if (!tasksRes.ok) throw new Error(tasksRes.error || "讀取任務失敗");
@@ -331,11 +356,15 @@ function loadData() {
       }
 
       renderAll();
-      showData();
+      if (!silent) showData();
     })
     .catch((err) => {
       console.error("讀取資料失敗", err);
-      showError(err);
+      if (silent) {
+        showToast("背景更新失敗，請稍後重新整理", "error");
+      } else {
+        showError(err);
+      }
     });
 }
 
@@ -382,12 +411,43 @@ function renderAll() {
   const lastUpdated = new Date().toLocaleString("zh-TW", { hour12: false });
   el.statusBarUpdated.textContent = `最後更新：${lastUpdated}`;
 
+  renderCourseTabs(el.tasksCourseTabs);
+  renderCourseTabs(el.manageCourseTabs);
+
   const studentTasks = getStudentTasks();
   renderSummary(studentTasks);
   renderOverview(studentTasks);
   renderSubjects();
   renderCalendar();
   renderManageTasksList();
+}
+
+function getCourseList() {
+  return [...new Set(allCourseUnits.map((u) => u.course))];
+}
+
+function selectCourse(course) {
+  if (currentCourse === course) return;
+  currentCourse = course;
+  renderCourseTabs(el.tasksCourseTabs);
+  renderCourseTabs(el.manageCourseTabs);
+  renderSubjects();
+  renderCalendar();
+  renderManageTasksList();
+}
+
+function renderCourseTabs(container) {
+  if (!container) return;
+  const courses = getCourseList();
+  if (!currentCourse || !courses.includes(currentCourse)) currentCourse = courses[0] || null;
+  container.innerHTML = "";
+  courses.forEach((course) => {
+    const btn = document.createElement("button");
+    btn.className = "course-tab" + (course === currentCourse ? " active" : "");
+    btn.textContent = course;
+    btn.addEventListener("click", () => selectCourse(course));
+    container.appendChild(btn);
+  });
 }
 
 function renderSummary(tasks) {
@@ -438,6 +498,7 @@ el.tomorrowHeader.addEventListener("click", () => el.tomorrowBlock.classList.tog
 function getFilteredTasks() {
   const search = currentSearch.trim().toLowerCase();
   return getStudentTasks().filter((t) => {
+    if (t.course !== currentCourse) return false;
     if (currentStatusFilter !== "all" && t.status !== currentStatusFilter) return false;
     if (!search) return true;
     const haystack = `${t.course} ${t.unit} ${t.task}`.toLowerCase();
@@ -466,38 +527,10 @@ function renderSubjects() {
   }
   el.noResults.classList.add("hidden");
 
-  const byCourse = groupBy(filtered, "course");
-
-  for (const [course, courseTasks] of byCourse) {
-    el.subjectsContainer.appendChild(buildCourseBlock(course, courseTasks));
-  }
-}
-
-function buildCourseBlock(course, tasks) {
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === "2").length;
-  const percent = total ? Math.round((done / total) * 100) : 0;
-
-  const block = document.createElement("section");
-  block.className = "course-block";
-
-  const header = document.createElement("div");
-  header.className = "course-block-header";
-  header.innerHTML = `
-    <h2 class="course-block-title">${escapeHtml(course)}</h2>
-    <span class="course-block-percent">${done}/${total}・${percent}%</span>
-  `;
-  block.appendChild(header);
-
-  const container = document.createElement("div");
-  container.className = "subjects-container";
-  const byUnit = groupBy(tasks, "unit");
+  const byUnit = groupBy(filtered, "unit");
   for (const [unit, unitTasks] of byUnit) {
-    container.appendChild(buildUnitCard(unit, unitTasks));
+    el.subjectsContainer.appendChild(buildUnitCard(unit, unitTasks));
   }
-  block.appendChild(container);
-
-  return block;
 }
 
 function buildUnitCard(unit, tasks) {
@@ -561,12 +594,17 @@ function buildTaskListItem(t, showCourse) {
   if (reportBtn) {
     reportBtn.addEventListener("click", () => {
       reportBtn.disabled = true;
+      reportBtn.textContent = "處理中...";
       Api.reportTask(session.name, t.id)
         .then((res) => {
-          if (!res.ok) alert(res.error || "回報失敗");
-          loadData();
+          if (!res.ok) {
+            showToast(res.error || "回報失敗", "error");
+          } else {
+            showToast("已回報完成，等待家長審核", "success");
+          }
+          loadData(true);
         })
-        .catch((err) => alert(`回報失敗（${err.message}）`));
+        .catch((err) => showToast(`回報失敗（${err.message}）`, "error"));
     });
   }
   return item;
@@ -736,31 +774,13 @@ function unitKey(course, unit) {
 function renderManageTasksList() {
   if (session.role !== "家長") return;
   el.manageTasksTree.innerHTML = "";
+  if (!currentCourse) return;
   const studentTasks = allTasks.filter((t) => t.student === currentStudent);
-  const byCourse = groupBy(allCourseUnits, "course");
-  for (const [course, units] of byCourse) {
-    el.manageTasksTree.appendChild(buildManageCourseBlock(course, units, studentTasks));
-  }
-}
-
-function buildManageCourseBlock(course, units, studentTasks) {
-  const block = document.createElement("section");
-  block.className = "course-block";
-
-  const header = document.createElement("div");
-  header.className = "course-block-header";
-  header.innerHTML = `<h2 class="course-block-title">${escapeHtml(course)}</h2>`;
-  block.appendChild(header);
-
-  const container = document.createElement("div");
-  container.className = "subjects-container";
-  for (const u of units) {
-    const unitTasks = studentTasks.filter((t) => t.course === course && t.unit === u.unit);
-    container.appendChild(buildManageUnitCard(course, u, unitTasks));
-  }
-  block.appendChild(container);
-
-  return block;
+  const units = allCourseUnits.filter((u) => u.course === currentCourse);
+  units.forEach((u) => {
+    const unitTasks = studentTasks.filter((t) => t.course === currentCourse && t.unit === u.unit);
+    el.manageTasksTree.appendChild(buildManageUnitCard(currentCourse, u, unitTasks));
+  });
 }
 
 function buildManageUnitCard(course, u, tasks) {
@@ -819,14 +839,17 @@ function buildManageTaskRow(t) {
         <button class="secondary-btn" data-action="cancel">取消</button>
       </div>
     `;
+    const saveBtn = row.querySelector('[data-action="save"]');
     row.querySelector(".edit-task-slot").value = t.timeSlot || "整天";
     row.querySelector('[data-action="cancel"]').addEventListener("click", () => {
       editingTaskId = null;
       renderManageTasksList();
     });
-    row.querySelector('[data-action="save"]').addEventListener("click", () => {
+    saveBtn.addEventListener("click", () => {
       const task = row.querySelector(".edit-task-name").value.trim();
       if (!task) return;
+      saveBtn.disabled = true;
+      saveBtn.textContent = "儲存中...";
       Api.updateTask({
         id: t.id,
         editor: session.name,
@@ -839,13 +862,20 @@ function buildManageTaskRow(t) {
       })
         .then((res) => {
           if (!res.ok) {
-            alert(res.error || "更新失敗");
+            showToast(res.error || "更新失敗", "error");
+            saveBtn.disabled = false;
+            saveBtn.textContent = "儲存";
             return;
           }
           editingTaskId = null;
-          loadData();
+          showToast("已更新任務", "success");
+          loadData(true);
         })
-        .catch((err) => alert(`更新失敗（${err.message}）`));
+        .catch((err) => {
+          showToast(`更新失敗（${err.message}）`, "error");
+          saveBtn.disabled = false;
+          saveBtn.textContent = "儲存";
+        });
     });
     return row;
   }
@@ -863,8 +893,6 @@ function buildManageTaskRow(t) {
       </div>
       <div class="request-item-actions">
         ${t.reportStatus === "待審核" ? '<button class="approve-btn" data-action="approve">核准</button><button class="reject-btn" data-action="reject">拒絕</button>' : ""}
-        <button class="secondary-btn" data-action="edit">編輯</button>
-        <button class="reject-btn" data-action="delete">刪除</button>
       </div>
     </div>
   `;
@@ -874,31 +902,49 @@ function buildManageTaskRow(t) {
     if (!btn) return;
     btn.addEventListener("click", () => {
       row.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      btn.textContent = "處理中...";
       Api.reviewTask(t.id, action === "approve" ? "核准" : "拒絕", session.name)
         .then((res) => {
-          if (!res.ok) alert(res.error || "審核失敗");
-          loadData();
+          if (!res.ok) {
+            showToast(res.error || "審核失敗", "error");
+          } else {
+            showToast(action === "approve" ? "已核准這筆任務" : "已拒絕這筆回報", "success");
+          }
+          loadData(true);
         })
-        .catch((err) => alert(`審核失敗（${err.message}）`));
+        .catch((err) => showToast(`審核失敗（${err.message}）`, "error"));
     });
   });
 
-  row.querySelector('[data-action="edit"]').addEventListener("click", () => {
-    editingTaskId = t.id;
-    renderManageTasksList();
-  });
-  row.querySelector('[data-action="delete"]').addEventListener("click", () => {
-    if (!confirm(`確定要刪除「${t.task}」這筆任務嗎？`)) return;
-    Api.deleteTask({ id: t.id, editor: session.name })
-      .then((res) => {
-        if (!res.ok) {
-          alert(res.error || "刪除失敗");
-          return;
-        }
-        loadData();
-      })
-      .catch((err) => alert(`刪除失敗（${err.message}）`));
-  });
+  const actionsWrap = row.querySelector(".request-item-actions");
+  actionsWrap.appendChild(
+    buildKebab([
+      {
+        label: "編輯",
+        onClick: () => {
+          editingTaskId = t.id;
+          renderManageTasksList();
+        },
+      },
+      {
+        label: "刪除",
+        danger: true,
+        onClick: () => {
+          if (!confirm(`確定要刪除「${t.task}」這筆任務嗎？`)) return;
+          Api.deleteTask({ id: t.id, editor: session.name })
+            .then((res) => {
+              if (!res.ok) {
+                showToast(res.error || "刪除失敗", "error");
+                return;
+              }
+              showToast("已刪除任務", "success");
+              loadData(true);
+            })
+            .catch((err) => showToast(`刪除失敗（${err.message}）`, "error"));
+        },
+      },
+    ])
+  );
 
   return row;
 }
@@ -907,15 +953,15 @@ function buildAddTaskControl(course, unit, key) {
   const wrap = document.createElement("div");
 
   if (addingTaskUnit !== key) {
-    const btn = document.createElement("button");
-    btn.className = "secondary-btn";
-    btn.textContent = "+ 新增任務";
-    btn.addEventListener("click", () => {
+    const link = document.createElement("button");
+    link.className = "inline-add-link";
+    link.textContent = "+ 新增此單元任務";
+    link.addEventListener("click", () => {
       addingTaskUnit = key;
       expandedUnits.add(key);
       renderManageTasksList();
     });
-    wrap.appendChild(btn);
+    wrap.appendChild(link);
     return wrap;
   }
 
@@ -932,13 +978,16 @@ function buildAddTaskControl(course, unit, key) {
     <button class="primary-btn" data-action="save">新增</button>
     <button class="secondary-btn" data-action="cancel">取消</button>
   `;
+  const saveBtn = wrap.querySelector('[data-action="save"]');
   wrap.querySelector('[data-action="cancel"]').addEventListener("click", () => {
     addingTaskUnit = null;
     renderManageTasksList();
   });
-  wrap.querySelector('[data-action="save"]').addEventListener("click", () => {
+  saveBtn.addEventListener("click", () => {
     const task = wrap.querySelector(".add-task-name").value.trim();
     if (!task) return;
+    saveBtn.disabled = true;
+    saveBtn.textContent = "新增中...";
     Api.createTask({
       creator: session.name,
       student: currentStudent,
@@ -950,17 +999,167 @@ function buildAddTaskControl(course, unit, key) {
     })
       .then((res) => {
         if (!res.ok) {
-          alert(res.error || "新增失敗");
+          showToast(res.error || "新增失敗", "error");
+          saveBtn.disabled = false;
+          saveBtn.textContent = "新增";
           return;
         }
         addingTaskUnit = null;
-        loadData();
+        showToast(`已新增：${task}`, "success");
+        loadData(true);
       })
-      .catch((err) => alert(`新增失敗（${err.message}）`));
+      .catch((err) => {
+        showToast(`新增失敗（${err.message}）`, "error");
+        saveBtn.disabled = false;
+        saveBtn.textContent = "新增";
+      });
   });
 
   return wrap;
 }
+
+// ---------- 「⋮」選單 ----------
+
+function closeAllKebabMenus() {
+  document.querySelectorAll(".kebab-menu.open").forEach((m) => m.classList.remove("open"));
+}
+
+document.addEventListener("click", (e) => {
+  if (e.target.closest(".kebab-trigger")) return;
+  closeAllKebabMenus();
+});
+
+function buildKebab(actions) {
+  const wrap = document.createElement("div");
+  wrap.className = "kebab";
+
+  const trigger = document.createElement("button");
+  trigger.className = "kebab-trigger";
+  trigger.textContent = "⋮";
+  trigger.setAttribute("aria-label", "更多選項");
+
+  const menu = document.createElement("div");
+  menu.className = "kebab-menu";
+  actions.forEach((a) => {
+    const item = document.createElement("button");
+    item.className = "kebab-item" + (a.danger ? " danger" : "");
+    item.textContent = a.label;
+    item.addEventListener("click", () => {
+      closeAllKebabMenus();
+      a.onClick();
+    });
+    menu.appendChild(item);
+  });
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = menu.classList.contains("open");
+    closeAllKebabMenus();
+    if (!wasOpen) menu.classList.add("open");
+  });
+
+  wrap.appendChild(trigger);
+  wrap.appendChild(menu);
+  return wrap;
+}
+
+// ---------- Toast ----------
+
+function showToast(message, type) {
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type || "success"}`;
+  toast.textContent = message;
+  el.toastContainer.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("show"));
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }, 2500);
+}
+
+// ---------- 批次新增任務彈窗 ----------
+
+function populateModalOptions() {
+  el.modalStudentSelect.innerHTML = allStudents
+    .map((s) => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
+    .join("");
+  const courses = getCourseList();
+  el.modalCourseSelect.innerHTML = courses
+    .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
+    .join("");
+}
+
+function populateModalUnitSelect(course) {
+  const units = allCourseUnits.filter((u) => u.course === course);
+  el.modalUnitSelect.innerHTML = units
+    .map((u) => `<option value="${escapeHtml(u.unit)}">${escapeHtml(`${u.unitCode} ${u.unit}`.trim())}</option>`)
+    .join("");
+}
+
+function openTaskModal() {
+  populateModalOptions();
+  el.modalStudentSelect.value = currentStudent || "";
+  if (currentCourse) el.modalCourseSelect.value = currentCourse;
+  populateModalUnitSelect(el.modalCourseSelect.value);
+  el.modalTaskName.value = "";
+  el.modalTaskDate.value = "";
+  el.modalTaskSlot.value = "整天";
+  el.modalMessage.classList.add("hidden");
+  el.taskModalOverlay.classList.remove("hidden");
+  el.modalTaskName.focus();
+}
+
+function closeTaskModal() {
+  el.taskModalOverlay.classList.add("hidden");
+}
+
+el.taskFab.addEventListener("click", openTaskModal);
+el.modalCloseBtn.addEventListener("click", closeTaskModal);
+el.modalDoneBtn.addEventListener("click", closeTaskModal);
+el.taskModalOverlay.addEventListener("click", (e) => {
+  if (e.target === el.taskModalOverlay) closeTaskModal();
+});
+el.modalCourseSelect.addEventListener("change", () => populateModalUnitSelect(el.modalCourseSelect.value));
+
+el.modalAddBtn.addEventListener("click", () => {
+  const payload = {
+    creator: session.name,
+    student: el.modalStudentSelect.value,
+    course: el.modalCourseSelect.value,
+    unit: el.modalUnitSelect.value,
+    task: el.modalTaskName.value.trim(),
+    date: el.modalTaskDate.value,
+    timeSlot: el.modalTaskSlot.value,
+  };
+  if (!payload.student || !payload.course || !payload.unit || !payload.task) {
+    el.modalMessage.textContent = "請完整填寫學生、課程、單元與任務名稱。";
+    el.modalMessage.classList.remove("hidden");
+    return;
+  }
+  el.modalAddBtn.disabled = true;
+  el.modalAddBtn.textContent = "新增中...";
+  Api.createTask(payload)
+    .then((res) => {
+      el.modalAddBtn.disabled = false;
+      el.modalAddBtn.textContent = "新增";
+      if (!res.ok) {
+        el.modalMessage.textContent = res.error || "新增失敗";
+        el.modalMessage.classList.remove("hidden");
+        return;
+      }
+      el.modalMessage.classList.add("hidden");
+      showToast(`已新增：${payload.task}`, "success");
+      el.modalTaskName.value = "";
+      el.modalTaskName.focus();
+      loadData(true);
+    })
+    .catch((err) => {
+      el.modalAddBtn.disabled = false;
+      el.modalAddBtn.textContent = "新增";
+      el.modalMessage.textContent = `新增失敗（${err.message}）`;
+      el.modalMessage.classList.remove("hidden");
+    });
+});
 
 // ---------- Filters ----------
 
