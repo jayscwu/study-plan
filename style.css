@@ -1367,6 +1367,18 @@ body {
 
 /* 看板 */
 
+:root {
+  --board-bar-track: #e0e0e0;
+  --board-bar-fill: #4caf50;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --board-bar-track: #374151;
+    --board-bar-fill: #4caf50;
+  }
+}
+
 .board-columns {
   display: flex;
   align-items: flex-start;
@@ -1377,21 +1389,30 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* 固定高度、欄內自己捲動，單元標題才能吸在欄位頂端 */
 .board-column {
   flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 120px);
+  max-height: calc(100dvh - 120px);
   background: var(--color-surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 12px;
   scroll-snap-align: start;
+  overflow: hidden;
 }
 
 .board-column-header {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.board-column-heading {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 4px;
 }
 
 .board-column-title {
@@ -1404,30 +1425,96 @@ body {
   white-space: nowrap;
 }
 
-.board-column-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.board-bar {
+  height: 4px;
+  margin-top: 8px;
+  background: var(--board-bar-track);
+  border-radius: 999px;
+  overflow: hidden;
 }
 
-.board-unit-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  margin-top: 10px;
+.board-bar-fill {
+  height: 100%;
+  background: var(--board-bar-fill);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.board-column-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 8px;
 }
 
 .board-empty {
   font-size: 0.82rem;
   color: var(--color-text-muted);
-  margin: 12px 0 4px;
+  margin: 12px 4px 4px;
 }
+
+/* 單元標題：可收合、展開時吸頂 */
+
+.board-unit-title {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: none;
+  border-bottom: 2px solid var(--color-border);
+  border-radius: 6px 6px 0 0;
+  background: var(--color-todo-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-unit-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform 0.2s ease;
+}
+
+.board-unit.open .board-unit-arrow {
+  transform: rotate(90deg);
+}
+
+.board-unit-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.board-unit-count {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.board-unit-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 6px;
+}
+
+/* 卡片 */
 
 .board-card {
   border: 1px solid var(--color-border);
   border-left: 4px solid var(--color-todo-text);
   border-radius: 8px;
   background: var(--color-surface);
+  padding: 6px 8px;
+  transition: opacity 0.2s ease;
 }
 
 .board-card.status-1 {
@@ -1442,53 +1529,158 @@ body {
 
 .board-card.saving {
   opacity: 0.7;
+  pointer-events: none;
 }
 
-.board-card-head {
+.board-card-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.board-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  min-height: 24px;
+}
+
+.status-pill {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-todo-text);
+  padding: 1px 9px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.status-pill.status-1 {
+  color: var(--color-progress-text);
+  border-color: var(--color-progress-text);
+}
+
+.status-pill.status-2 {
+  color: var(--color-done-text);
+  border-color: var(--color-done-text);
+}
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.card-date {
+  position: relative;
+  margin-left: auto;
+}
+
+.card-date-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.card-date-btn:hover {
+  text-decoration: underline;
+}
+
+.board-card.status-1 .card-date-btn {
+  color: var(--color-progress-text);
+}
+
+.board-card.status-2 .card-date-btn {
+  color: var(--color-done-text);
+}
+
+/* 原生日期選擇器的定位用，平常看不到 */
+.card-date-input {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: none;
+  padding: 0;
+}
+
+.card-date-input.visible {
+  position: static;
+  width: auto;
+  height: auto;
+  opacity: 1;
+  margin-top: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.78rem;
+}
+
+/* 狀態選單 */
+
+.status-menu {
+  position: fixed;
+  z-index: 85;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 100%;
+  min-width: 110px;
+  padding: 5px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.status-menu.hidden {
+  display: none;
+}
+
+.status-menu-item {
   border: none;
   background: none;
   color: var(--color-text);
   text-align: left;
-  padding: 8px 10px;
-  cursor: pointer;
-  font: inherit;
-}
-
-.board-card-name {
+  padding: 7px 10px;
   font-size: 0.85rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
-.board-card-meta {
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
+.status-menu-item:hover {
+  background: var(--color-todo-bg);
 }
 
-.board-card.status-1 .board-card-meta {
+.status-menu-item.current {
+  font-weight: 700;
+}
+
+.status-menu-item.current::after {
+  content: " ✓";
+}
+
+.status-menu-item.status-1 {
   color: var(--color-progress-text);
 }
 
-.board-card.status-2 .board-card-meta {
+.status-menu-item.status-2 {
   color: var(--color-done-text);
-}
-
-.board-card .progress-item-controls {
-  padding: 0 10px 10px;
-  justify-content: flex-start;
-}
-
-.board-card .seg {
-  flex: 1 1 100%;
-}
-
-.board-card .seg-btn {
-  flex: 1;
-  padding: 5px 4px;
 }
 
 /* Mobile */

@@ -10,7 +10,7 @@ const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": 
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v2.2";
+const APP_VERSION = "v2.3";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -149,7 +149,8 @@ let addingTaskUnit = null;
 let expandedUnits = new Set();
 let expandedProgressUnits = new Set();
 let expandedDashboardCourses = new Set();
-let expandedBoardItems = new Set();
+let boardOpenUnits = null;
+let boardBarPercent = new Map();
 let progressPrefs = loadProgressPrefs();
 let currentCourse = null;
 
@@ -401,6 +402,8 @@ function loadData(silent) {
 
 el.studentSelect.addEventListener("change", (e) => {
   currentStudent = e.target.value;
+  boardOpenUnits = null;
+  boardBarPercent.clear();
   renderAll();
 });
 
@@ -993,7 +996,26 @@ function shortMonthDay(key) {
   return `${m}/${d}`;
 }
 
+// 每一欄一次只展開一個單元；第一次畫看板時自動展開第一個還沒全部上完的單元
+function initBoardOpenUnits() {
+  boardOpenUnits = new Map();
+  allCourses.forEach((course) => {
+    const current = course.units.find((u) => u.items.some((i) => getItemProgress(i.id).status !== "上完課"));
+    if (current) boardOpenUnits.set(course.id, current.id);
+  });
+}
+
+function toggleBoardUnit(courseId, unitId) {
+  if (boardOpenUnits.get(courseId) === unitId) boardOpenUnits.delete(courseId);
+  else boardOpenUnits.set(courseId, unitId);
+  renderProgressBoard();
+}
+
 function renderProgressBoard() {
+  if (!allCourses.length) return;
+  if (!boardOpenUnits) initBoardOpenUnits();
+  closeStatusMenu();
+
   const courseNames = getCourseList();
   const selectedCourses = renderFilterChips(el.boardCourseFilter, "courses", courseNames);
   const selectedStatuses = renderFilterChips(el.boardStatusFilter, "statuses", PROGRESS_STATUSES);
@@ -1001,33 +1023,44 @@ function renderProgressBoard() {
   const courses = selectedCourses.length ? allCourses.filter((c) => selectedCourses.includes(c.name)) : allCourses;
   const statusVisible = (status) => selectedStatuses.length === 0 || selectedStatuses.includes(status);
 
-  // 重畫會把橫向捲動歸零，先記下來再還原
+  // 重畫會把捲動位置歸零，先記下來再還原
   const scrollLeft = el.boardColumns.scrollLeft;
+  const bodyScroll = new Map();
+  el.boardColumns.querySelectorAll(".board-column").forEach((col) => {
+    bodyScroll.set(Number(col.dataset.courseId), col.querySelector(".board-column-body").scrollTop);
+  });
+
   el.boardColumns.innerHTML = "";
   let shownCards = 0;
+  const bars = [];
 
   courses.forEach((course) => {
     const counts = countProgress(courseItems(course));
+    const prevPercent = boardBarPercent.has(course.id) ? boardBarPercent.get(course.id) : counts.percent;
+
     const column = document.createElement("section");
     column.className = "board-column";
+    column.dataset.courseId = course.id;
     column.innerHTML = `
       <div class="board-column-header">
-        <span class="board-column-title">${escapeHtml(course.name)}</span>
-        <span class="board-column-count">上完課 ${counts.done}/${counts.total}</span>
+        <div class="board-column-heading">
+          <span class="board-column-title">${escapeHtml(course.name)}</span>
+          <span class="board-column-count">上完課 ${counts.done}/${counts.total}</span>
+        </div>
+        <div class="board-bar"><div class="board-bar-fill" style="width:${prevPercent}%"></div></div>
       </div>
     `;
+    bars.push([column.querySelector(".board-bar-fill"), counts.percent]);
+    boardBarPercent.set(course.id, counts.percent);
+
     const body = document.createElement("div");
     body.className = "board-column-body";
 
     course.units.forEach((unit) => {
       const items = unit.items.filter((item) => statusVisible(getItemProgress(item.id).status));
       if (items.length === 0) return;
-      const title = document.createElement("div");
-      title.className = "board-unit-title";
-      title.textContent = unit.name;
-      body.appendChild(title);
-      items.forEach((item) => body.appendChild(buildBoardCard(item)));
       shownCards += items.length;
+      body.appendChild(buildBoardUnit(course, unit, items, selectedStatuses));
     });
 
     if (!body.children.length) {
@@ -1035,39 +1068,168 @@ function renderProgressBoard() {
     }
     column.appendChild(body);
     el.boardColumns.appendChild(column);
+    body.scrollTop = bodyScroll.get(course.id) || 0;
   });
 
   el.boardColumns.scrollLeft = scrollLeft;
   el.noBoardResults.classList.toggle("hidden", shownCards > 0);
+
+  // 先用舊的寬度畫出來，下一個畫格再改成新寬度，進度條才會有動畫
+  requestAnimationFrame(() => bars.forEach(([fill, percent]) => (fill.style.width = `${percent}%`)));
+}
+
+function buildBoardUnit(course, unit, items, selectedStatuses) {
+  const open = boardOpenUnits.get(course.id) === unit.id;
+
+  let countText;
+  if (selectedStatuses.length) {
+    countText = selectedStatuses
+      .map((s) => [s, items.filter((i) => getItemProgress(i.id).status === s).length])
+      .filter(([, n]) => n > 0)
+      .map(([s, n]) => `${s} ${n}`)
+      .join("・");
+  } else {
+    const counts = countProgress(unit.items);
+    countText = `${counts.done}/${counts.total}`;
+  }
+
+  const section = document.createElement("div");
+  section.className = "board-unit" + (open ? " open" : "");
+
+  const header = document.createElement("button");
+  header.className = "board-unit-title";
+  header.setAttribute("aria-expanded", open);
+  header.innerHTML = `
+    <span class="board-unit-arrow">▸</span>
+    <span class="board-unit-name">${escapeHtml(unit.name)}</span>
+    <span class="board-unit-count">${escapeHtml(countText)}</span>
+  `;
+  header.addEventListener("click", () => toggleBoardUnit(course.id, unit.id));
+  section.appendChild(header);
+
+  if (open) {
+    const list = document.createElement("div");
+    list.className = "board-unit-cards";
+    items.forEach((item) => list.appendChild(buildBoardCard(item)));
+    section.appendChild(list);
+  }
+  return section;
 }
 
 function buildBoardCard(item) {
   const p = getItemProgress(item.id);
   const code = PROGRESS_STATUS_CODE[p.status];
   const saving = savingItems.has(progressKey(currentStudent, item.id));
-  const expanded = expandedBoardItems.has(item.id);
-
-  let dateText = "";
-  if (p.status === "學習中" && p.startDate) dateText = `${shortMonthDay(p.startDate)} 開始`;
-  if (p.status === "上完課" && p.doneDate) dateText = shortMonthDay(p.doneDate);
-  if (saving) dateText = "儲存中...";
+  const dateValue = p.status === "上完課" ? p.doneDate : p.status === "學習中" ? p.startDate : "";
+  const dateText = !dateValue ? "" : p.status === "學習中" ? `${shortMonthDay(dateValue)} 開始` : shortMonthDay(dateValue);
 
   const card = document.createElement("div");
-  card.className = `board-card status-${code}` + (expanded ? " expanded" : "") + (saving ? " saving" : "");
+  card.className = `board-card status-${code}` + (saving ? " saving" : "");
   card.innerHTML = `
-    <button class="board-card-head" aria-expanded="${expanded}">
-      <span class="board-card-name">${escapeHtml(item.name)}</span>
-      <span class="board-card-meta">${escapeHtml(p.status)}${dateText ? `・${escapeHtml(dateText)}` : ""}</span>
-    </button>
+    <div class="board-card-name">${escapeHtml(item.name)}</div>
+    <div class="board-card-foot">
+      <button class="status-pill status-${code}" aria-haspopup="menu">${escapeHtml(p.status)} ▾</button>
+      ${saving ? `<span class="spinner-sm" aria-label="儲存中"></span>` : ""}
+      ${
+        !saving && p.status !== "待學習"
+          ? `<span class="card-date">
+              <button class="card-date-btn" title="修改日期">${escapeHtml(dateText || "選擇日期")} ✏️</button>
+              <input type="date" class="card-date-input" max="${todayKey()}" value="${escapeHtml(dateValue || "")}" tabindex="-1" aria-label="日期">
+            </span>`
+          : ""
+      }
+    </div>
   `;
-  card.querySelector(".board-card-head").addEventListener("click", () => {
-    if (expandedBoardItems.has(item.id)) expandedBoardItems.delete(item.id);
-    else expandedBoardItems.add(item.id);
-    renderProgressBoard();
+
+  const pill = card.querySelector(".status-pill");
+  pill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openStatusMenu(pill, item, p);
   });
-  if (expanded) card.appendChild(buildProgressControls(item, p, saving));
+
+  const dateBtn = card.querySelector(".card-date-btn");
+  if (dateBtn) {
+    const input = card.querySelector(".card-date-input");
+    dateBtn.addEventListener("click", () => {
+      try {
+        input.showPicker();
+      } catch {
+        // 不支援 showPicker 的瀏覽器，直接把日期欄顯示出來
+        input.classList.add("visible");
+        input.focus();
+      }
+    });
+    input.addEventListener("change", () => {
+      const value = input.value;
+      if (!value || value > todayKey()) {
+        input.value = dateValue || "";
+        showToast(value ? "不能填未來的日期" : "請選擇日期", "error");
+        return;
+      }
+      if (value === dateValue) return;
+      saveProgress(item.id, p.status, value);
+    });
+  }
+
   return card;
 }
+
+// ---------- 看板：狀態選單 ----------
+
+const statusMenu = document.createElement("div");
+statusMenu.className = "status-menu hidden";
+statusMenu.setAttribute("role", "menu");
+document.body.appendChild(statusMenu);
+
+function openStatusMenu(anchor, item, p) {
+  if (!statusMenu.classList.contains("hidden") && statusMenu.dataset.itemId === String(item.id)) {
+    closeStatusMenu();
+    return;
+  }
+  statusMenu.dataset.itemId = item.id;
+  statusMenu.innerHTML = "";
+  PROGRESS_STATUSES.forEach((s) => {
+    const btn = document.createElement("button");
+    btn.className = `status-menu-item status-${PROGRESS_STATUS_CODE[s]}` + (s === p.status ? " current" : "");
+    btn.setAttribute("role", "menuitem");
+    btn.textContent = s;
+    btn.addEventListener("click", () => {
+      closeStatusMenu();
+      if (s === p.status) return;
+      // 從上完課退回學習中時保留原本的開始日期，其他情況預設今天
+      const date = s === "待學習" ? "" : s === "學習中" && p.startDate ? p.startDate : todayKey();
+      saveProgress(item.id, s, date);
+    });
+    statusMenu.appendChild(btn);
+  });
+
+  statusMenu.classList.remove("hidden");
+  const rect = anchor.getBoundingClientRect();
+  const menuHeight = statusMenu.offsetHeight;
+  const below = rect.bottom + 4 + menuHeight <= window.innerHeight;
+  statusMenu.style.top = `${below ? rect.bottom + 4 : rect.top - 4 - menuHeight}px`;
+  statusMenu.style.left = `${Math.min(rect.left, window.innerWidth - statusMenu.offsetWidth - 8)}px`;
+}
+
+function closeStatusMenu() {
+  statusMenu.classList.add("hidden");
+  statusMenu.dataset.itemId = "";
+}
+
+document.addEventListener("click", (e) => {
+  if (!statusMenu.contains(e.target)) closeStatusMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeStatusMenu();
+});
+document.addEventListener(
+  "scroll",
+  (e) => {
+    if (!statusMenu.contains(e.target)) closeStatusMenu();
+  },
+  true
+);
+window.addEventListener("resize", closeStatusMenu);
 
 // ---------- 任務卡片 ----------
 
