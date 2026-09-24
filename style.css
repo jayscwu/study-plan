@@ -1395,9 +1395,10 @@ body {
   position: relative;
 }
 
+/* 欄位會隨內容變長，按鈕固定在欄位上方附近，一進入看板就看得到 */
 .board-nav {
   position: absolute;
-  top: 50%;
+  top: 140px;
   z-index: 5;
   transform: translateY(-50%);
   width: 48px;
@@ -1429,13 +1430,9 @@ body {
   right: -8px;
 }
 
-/* 固定高度、欄內自己捲動，單元標題才能吸在欄位頂端 */
+/* 欄位高度照內容自動長高，捲整頁來看下面的內容 */
 .board-column {
   flex: 0 0 260px;
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 120px);
-  max-height: calc(100dvh - 120px);
   background: var(--color-surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -1481,8 +1478,6 @@ body {
 }
 
 .board-column-body {
-  overflow-y: auto;
-  overscroll-behavior: contain;
   padding: 0 8px 8px;
 }
 
@@ -1492,12 +1487,9 @@ body {
   margin: 12px 4px 4px;
 }
 
-/* 單元標題：可收合、展開時吸頂 */
+/* 單元標題：可收合 */
 
 .board-unit-title {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
   align-items: center;
   gap: 6px;

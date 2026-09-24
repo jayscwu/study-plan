@@ -10,7 +10,7 @@ const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": 
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v2.4";
+const APP_VERSION = "v2.5";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -1025,12 +1025,8 @@ function renderProgressBoard() {
   const courses = selectedCourses.length ? allCourses.filter((c) => selectedCourses.includes(c.name)) : allCourses;
   const statusVisible = (status) => selectedStatuses.length === 0 || selectedStatuses.includes(status);
 
-  // 重畫會把捲動位置歸零，先記下來再還原
+  // 重畫會把橫向捲動歸零，先記下來再還原
   const scrollLeft = el.boardColumns.scrollLeft;
-  const bodyScroll = new Map();
-  el.boardColumns.querySelectorAll(".board-column").forEach((col) => {
-    bodyScroll.set(Number(col.dataset.courseId), col.querySelector(".board-column-body").scrollTop);
-  });
 
   el.boardColumns.innerHTML = "";
   let shownCards = 0;
@@ -1070,7 +1066,6 @@ function renderProgressBoard() {
     }
     column.appendChild(body);
     el.boardColumns.appendChild(column);
-    body.scrollTop = bodyScroll.get(course.id) || 0;
   });
 
   el.boardColumns.scrollLeft = scrollLeft;
