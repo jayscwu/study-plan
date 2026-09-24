@@ -179,9 +179,35 @@
 
       <!-- 上課進度頁籤 -->
       <section id="view-progress" class="hidden">
-        <div id="progress-course-tabs" class="course-tabs"></div>
-        <section id="progress-units" class="subjects-container"></section>
-        <p id="no-progress-units" class="no-results hidden">這個課程還沒有單元。</p>
+        <div class="progress-toolbar">
+          <div class="mode-toggle" id="progress-mode-toggle">
+            <button class="mode-toggle-btn active" data-mode="accordion">手風琴</button>
+            <button class="mode-toggle-btn" data-mode="board">看板</button>
+          </div>
+        </div>
+
+        <!-- 手風琴模式 -->
+        <section id="progress-accordion">
+          <div id="progress-course-tabs" class="course-tabs"></div>
+          <section id="progress-units" class="subjects-container"></section>
+          <p id="no-progress-units" class="no-results hidden">這個課程還沒有單元。</p>
+        </section>
+
+        <!-- 看板模式 -->
+        <section id="progress-board" class="hidden">
+          <div class="board-filters">
+            <div class="board-filter-row">
+              <span class="board-filter-label">科目</span>
+              <div id="board-course-filter" class="status-filter"></div>
+            </div>
+            <div class="board-filter-row">
+              <span class="board-filter-label">狀態</span>
+              <div id="board-status-filter" class="status-filter"></div>
+            </div>
+          </div>
+          <div id="board-columns" class="board-columns"></div>
+          <p id="no-board-results" class="no-results hidden">沒有符合篩選條件的項目。</p>
+        </section>
       </section>
 
       <!-- 任務管理頁籤（家長專用） -->

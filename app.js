@@ -10,7 +10,7 @@ const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": 
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v2.1";
+const APP_VERSION = "v2.2";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -19,6 +19,7 @@ const VIEW_TITLES = {
 };
 
 const SESSION_KEY = "studyplan_session";
+const PROGRESS_PREFS_KEY = "studyplan_progress_prefs";
 
 const el = {
   loginView: document.getElementById("login-view"),
@@ -103,6 +104,14 @@ const el = {
   tomorrowCount: document.getElementById("tomorrow-count"),
   noTomorrow: document.getElementById("no-tomorrow"),
 
+  progressModeToggle: document.getElementById("progress-mode-toggle"),
+  progressAccordion: document.getElementById("progress-accordion"),
+  progressBoard: document.getElementById("progress-board"),
+  boardCourseFilter: document.getElementById("board-course-filter"),
+  boardStatusFilter: document.getElementById("board-status-filter"),
+  boardColumns: document.getElementById("board-columns"),
+  noBoardResults: document.getElementById("no-board-results"),
+
   progressCourseTabs: document.getElementById("progress-course-tabs"),
   progressUnits: document.getElementById("progress-units"),
   noProgressUnits: document.getElementById("no-progress-units"),
@@ -140,6 +149,8 @@ let addingTaskUnit = null;
 let expandedUnits = new Set();
 let expandedProgressUnits = new Set();
 let expandedDashboardCourses = new Set();
+let expandedBoardItems = new Set();
+let progressPrefs = loadProgressPrefs();
 let currentCourse = null;
 
 let currentView = "overview";
@@ -543,6 +554,7 @@ function renderProgressViews() {
   renderRecent();
   renderLearning();
   renderProgressUnits();
+  renderProgressBoard();
 }
 
 function getCourseList() {
@@ -837,8 +849,6 @@ function buildProgressItemRow(item) {
   const p = getItemProgress(item.id);
   const code = PROGRESS_STATUS_CODE[p.status];
   const saving = savingItems.has(progressKey(currentStudent, item.id));
-  const dateValue = p.status === "上完課" ? p.doneDate : p.status === "學習中" ? p.startDate : "";
-  const dateLabel = p.status === "上完課" ? "上完課" : "開始";
   const meta = [];
   if (p.status === "上完課" && p.startDate && p.startDate !== p.doneDate) meta.push(`${p.startDate} 開始`);
   if (saving) meta.push("儲存中...");
@@ -850,22 +860,33 @@ function buildProgressItemRow(item) {
       <div class="progress-item-name">${escapeHtml(item.name)}</div>
       ${meta.length ? `<div class="progress-item-meta">${escapeHtml(meta.join("・"))}</div>` : ""}
     </div>
-    <div class="progress-item-controls">
-      <div class="seg" role="group" aria-label="上課狀態">
-        ${PROGRESS_STATUSES.map(
-          (s) =>
-            `<button class="seg-btn status-${PROGRESS_STATUS_CODE[s]}${s === p.status ? " active" : ""}" data-status="${s}"${saving ? " disabled" : ""}>${s}</button>`
-        ).join("")}
-      </div>
-      ${
-        p.status === "待學習"
-          ? ""
-          : `<label class="progress-date"><span>${dateLabel}</span><input type="date" max="${todayKey()}" value="${escapeHtml(dateValue || "")}"${saving ? " disabled" : ""}></label>`
-      }
+  `;
+  row.appendChild(buildProgressControls(item, p, saving));
+  return row;
+}
+
+// 狀態按鈕＋日期欄，手風琴的項目列和看板卡片共用
+function buildProgressControls(item, p, saving) {
+  const dateValue = p.status === "上完課" ? p.doneDate : p.status === "學習中" ? p.startDate : "";
+  const dateLabel = p.status === "上完課" ? "上完課" : "開始";
+
+  const controls = document.createElement("div");
+  controls.className = "progress-item-controls";
+  controls.innerHTML = `
+    <div class="seg" role="group" aria-label="上課狀態">
+      ${PROGRESS_STATUSES.map(
+        (s) =>
+          `<button class="seg-btn status-${PROGRESS_STATUS_CODE[s]}${s === p.status ? " active" : ""}" data-status="${s}"${saving ? " disabled" : ""}>${s}</button>`
+      ).join("")}
     </div>
+    ${
+      p.status === "待學習"
+        ? ""
+        : `<label class="progress-date"><span>${dateLabel}</span><input type="date" max="${todayKey()}" value="${escapeHtml(dateValue || "")}"${saving ? " disabled" : ""}></label>`
+    }
   `;
 
-  row.querySelectorAll(".seg-btn").forEach((btn) => {
+  controls.querySelectorAll(".seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const status = btn.dataset.status;
       if (status === p.status) return;
@@ -875,7 +896,7 @@ function buildProgressItemRow(item) {
     });
   });
 
-  const dateInput = row.querySelector('input[type="date"]');
+  const dateInput = controls.querySelector('input[type="date"]');
   if (dateInput) {
     dateInput.addEventListener("change", () => {
       const value = dateInput.value;
@@ -889,7 +910,163 @@ function buildProgressItemRow(item) {
     });
   }
 
-  return row;
+  return controls;
+}
+
+// ---------- 上課進度：手風琴／看板切換 ----------
+
+function loadProgressPrefs() {
+  const defaults = { view: "accordion", courses: [], statuses: [] };
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROGRESS_PREFS_KEY) || "null");
+    if (!saved) return defaults;
+    return {
+      view: saved.view === "board" ? "board" : "accordion",
+      courses: Array.isArray(saved.courses) ? saved.courses : [],
+      statuses: Array.isArray(saved.statuses) ? saved.statuses.filter((s) => PROGRESS_STATUSES.includes(s)) : [],
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function saveProgressPrefs() {
+  try {
+    localStorage.setItem(PROGRESS_PREFS_KEY, JSON.stringify(progressPrefs));
+  } catch {
+    // 無痕模式等情況存不了，就只在這次使用期間有效
+  }
+}
+
+function applyProgressMode() {
+  const board = progressPrefs.view === "board";
+  [...el.progressModeToggle.children].forEach((btn) =>
+    btn.classList.toggle("active", btn.dataset.mode === progressPrefs.view)
+  );
+  el.progressAccordion.classList.toggle("hidden", board);
+  el.progressBoard.classList.toggle("hidden", !board);
+}
+
+el.progressModeToggle.addEventListener("click", (e) => {
+  const btn = e.target.closest(".mode-toggle-btn");
+  if (!btn || btn.dataset.mode === progressPrefs.view) return;
+  progressPrefs.view = btn.dataset.mode;
+  saveProgressPrefs();
+  applyProgressMode();
+});
+
+// 篩選值是陣列，空陣列代表「全部」；全部選滿時也收回成空陣列
+function toggleFilterValue(key, value, allValues) {
+  const current = progressPrefs[key];
+  let next;
+  if (value === null) {
+    next = [];
+  } else if (current.includes(value)) {
+    next = current.filter((v) => v !== value);
+  } else {
+    next = [...current, value];
+  }
+  if (next.length === allValues.length) next = [];
+  progressPrefs[key] = next;
+  saveProgressPrefs();
+  renderProgressBoard();
+}
+
+function renderFilterChips(container, key, allValues) {
+  const selected = progressPrefs[key].filter((v) => allValues.includes(v));
+  container.innerHTML = "";
+  const chips = [{ label: "全部", value: null, active: selected.length === 0 }].concat(
+    allValues.map((v) => ({ label: v, value: v, active: selected.includes(v) }))
+  );
+  chips.forEach((c) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-chip" + (c.active ? " active" : "");
+    btn.textContent = c.label;
+    btn.addEventListener("click", () => toggleFilterValue(key, c.value, allValues));
+    container.appendChild(btn);
+  });
+  return selected;
+}
+
+function shortMonthDay(key) {
+  const [, m, d] = key.split("-").map(Number);
+  return `${m}/${d}`;
+}
+
+function renderProgressBoard() {
+  const courseNames = getCourseList();
+  const selectedCourses = renderFilterChips(el.boardCourseFilter, "courses", courseNames);
+  const selectedStatuses = renderFilterChips(el.boardStatusFilter, "statuses", PROGRESS_STATUSES);
+
+  const courses = selectedCourses.length ? allCourses.filter((c) => selectedCourses.includes(c.name)) : allCourses;
+  const statusVisible = (status) => selectedStatuses.length === 0 || selectedStatuses.includes(status);
+
+  // 重畫會把橫向捲動歸零，先記下來再還原
+  const scrollLeft = el.boardColumns.scrollLeft;
+  el.boardColumns.innerHTML = "";
+  let shownCards = 0;
+
+  courses.forEach((course) => {
+    const counts = countProgress(courseItems(course));
+    const column = document.createElement("section");
+    column.className = "board-column";
+    column.innerHTML = `
+      <div class="board-column-header">
+        <span class="board-column-title">${escapeHtml(course.name)}</span>
+        <span class="board-column-count">上完課 ${counts.done}/${counts.total}</span>
+      </div>
+    `;
+    const body = document.createElement("div");
+    body.className = "board-column-body";
+
+    course.units.forEach((unit) => {
+      const items = unit.items.filter((item) => statusVisible(getItemProgress(item.id).status));
+      if (items.length === 0) return;
+      const title = document.createElement("div");
+      title.className = "board-unit-title";
+      title.textContent = unit.name;
+      body.appendChild(title);
+      items.forEach((item) => body.appendChild(buildBoardCard(item)));
+      shownCards += items.length;
+    });
+
+    if (!body.children.length) {
+      body.innerHTML = `<p class="board-empty">沒有符合的項目</p>`;
+    }
+    column.appendChild(body);
+    el.boardColumns.appendChild(column);
+  });
+
+  el.boardColumns.scrollLeft = scrollLeft;
+  el.noBoardResults.classList.toggle("hidden", shownCards > 0);
+}
+
+function buildBoardCard(item) {
+  const p = getItemProgress(item.id);
+  const code = PROGRESS_STATUS_CODE[p.status];
+  const saving = savingItems.has(progressKey(currentStudent, item.id));
+  const expanded = expandedBoardItems.has(item.id);
+
+  let dateText = "";
+  if (p.status === "學習中" && p.startDate) dateText = `${shortMonthDay(p.startDate)} 開始`;
+  if (p.status === "上完課" && p.doneDate) dateText = shortMonthDay(p.doneDate);
+  if (saving) dateText = "儲存中...";
+
+  const card = document.createElement("div");
+  card.className = `board-card status-${code}` + (expanded ? " expanded" : "") + (saving ? " saving" : "");
+  card.innerHTML = `
+    <button class="board-card-head" aria-expanded="${expanded}">
+      <span class="board-card-name">${escapeHtml(item.name)}</span>
+      <span class="board-card-meta">${escapeHtml(p.status)}${dateText ? `・${escapeHtml(dateText)}` : ""}</span>
+    </button>
+  `;
+  card.querySelector(".board-card-head").addEventListener("click", () => {
+    if (expandedBoardItems.has(item.id)) expandedBoardItems.delete(item.id);
+    else expandedBoardItems.add(item.id);
+    renderProgressBoard();
+  });
+  if (expanded) card.appendChild(buildProgressControls(item, p, saving));
+  return card;
 }
 
 // ---------- 任務卡片 ----------
@@ -1397,4 +1574,5 @@ el.refreshBtn.addEventListener("click", () => {
 
 el.retryBtn.addEventListener("click", () => loadData());
 
+applyProgressMode();
 init();
