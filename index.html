@@ -205,7 +205,11 @@
               <div id="board-status-filter" class="status-filter"></div>
             </div>
           </div>
-          <div id="board-columns" class="board-columns"></div>
+          <div class="board-viewport">
+            <button id="board-prev" class="board-nav prev hidden" aria-label="上一個科目">‹</button>
+            <div id="board-columns" class="board-columns"></div>
+            <button id="board-next" class="board-nav next hidden" aria-label="下一個科目">›</button>
+          </div>
           <p id="no-board-results" class="no-results hidden">沒有符合篩選條件的項目。</p>
         </section>
       </section>

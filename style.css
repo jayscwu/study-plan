@@ -1389,6 +1389,46 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* 左右移動按鈕 */
+
+.board-viewport {
+  position: relative;
+}
+
+.board-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  font-size: 1.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.board-nav:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.board-nav.prev {
+  left: -8px;
+}
+
+.board-nav.next {
+  right: -8px;
+}
+
 /* 固定高度、欄內自己捲動，單元標題才能吸在欄位頂端 */
 .board-column {
   flex: 0 0 260px;
@@ -1737,5 +1777,20 @@ body {
 
   .board-column {
     flex-basis: 85%;
+  }
+
+  .board-nav {
+    width: 36px;
+    height: 36px;
+    font-size: 1.4rem;
+    opacity: 0.85;
+  }
+
+  .board-nav.prev {
+    left: -6px;
+  }
+
+  .board-nav.next {
+    right: -6px;
   }
 }

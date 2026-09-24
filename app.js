@@ -10,7 +10,7 @@ const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": 
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v2.3";
+const APP_VERSION = "v2.4";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -111,6 +111,8 @@ const el = {
   boardStatusFilter: document.getElementById("board-status-filter"),
   boardColumns: document.getElementById("board-columns"),
   noBoardResults: document.getElementById("no-board-results"),
+  boardPrev: document.getElementById("board-prev"),
+  boardNext: document.getElementById("board-next"),
 
   progressCourseTabs: document.getElementById("progress-course-tabs"),
   progressUnits: document.getElementById("progress-units"),
@@ -1073,10 +1075,34 @@ function renderProgressBoard() {
 
   el.boardColumns.scrollLeft = scrollLeft;
   el.noBoardResults.classList.toggle("hidden", shownCards > 0);
+  updateBoardNav();
 
   // 先用舊的寬度畫出來，下一個畫格再改成新寬度，進度條才會有動畫
   requestAnimationFrame(() => bars.forEach(([fill, percent]) => (fill.style.width = `${percent}%`)));
 }
+
+// ---------- 看板：左右移動按鈕 ----------
+
+function updateBoardNav() {
+  const cols = el.boardColumns;
+  const maxScroll = cols.scrollWidth - cols.clientWidth;
+  el.boardPrev.classList.toggle("hidden", maxScroll <= 2 || cols.scrollLeft <= 2);
+  el.boardNext.classList.toggle("hidden", maxScroll <= 2 || cols.scrollLeft >= maxScroll - 2);
+}
+
+// 一次移動一欄（欄寬＋間距）
+function scrollBoardBy(direction) {
+  const column = el.boardColumns.querySelector(".board-column");
+  if (!column) return;
+  const gap = parseFloat(getComputedStyle(el.boardColumns).columnGap) || 0;
+  el.boardColumns.scrollBy({ left: direction * (column.offsetWidth + gap), behavior: "smooth" });
+}
+
+el.boardPrev.addEventListener("click", () => scrollBoardBy(-1));
+el.boardNext.addEventListener("click", () => scrollBoardBy(1));
+el.boardColumns.addEventListener("scroll", updateBoardNav, { passive: true });
+// 看板從隱藏變成顯示、或視窗大小改變時，重新判斷按鈕要不要出現
+new ResizeObserver(updateBoardNav).observe(el.boardColumns);
 
 function buildBoardUnit(course, unit, items, selectedStatuses) {
   const open = boardOpenUnits.get(course.id) === unit.id;
