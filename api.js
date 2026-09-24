@@ -29,4 +29,6 @@ const Api = {
   deleteTask: (payload) => apiPost("deleteTask", payload),
   reportTask: (student, id) => apiPost("reportTask", { student, id }),
   reviewTask: (id, decision, reviewer) => apiPost("reviewTask", { id, decision, reviewer }),
+  getProgress: (name, role) => apiGet("progress", { name, role }),
+  setProgress: (payload) => apiPost("setProgress", payload),
 };

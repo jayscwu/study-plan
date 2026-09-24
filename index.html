@@ -51,7 +51,7 @@
       <button id="logout-btn" class="secondary-btn">登出</button>
     </div>
 
-    <!-- 家長：學生切換（三個頁籤共用） -->
+    <!-- 家長：學生切換（所有頁籤共用） -->
     <section id="student-toolbar" class="student-toolbar hidden">
       <label for="student-select">檢視學生：</label>
       <select id="student-select" class="student-select"></select>
@@ -59,7 +59,7 @@
 
     <nav class="main-nav" id="main-nav">
       <button class="nav-tab active" data-view="overview">儀表板</button>
-      <button class="nav-tab" data-view="tasks">學習列表</button>
+      <button class="nav-tab" data-view="progress">上課進度</button>
       <button class="nav-tab" id="nav-manage-btn" data-view="manage">任務管理</button>
     </nav>
 
@@ -80,15 +80,20 @@
       <!-- 儀表板頁籤 -->
       <section id="view-overview" class="hidden">
 
+        <section id="review-banner" class="review-banner hidden">
+          <span id="review-banner-text"></span>
+          <button id="review-banner-btn" class="secondary-btn">前往審核</button>
+        </section>
+
         <section class="summary-card">
           <div class="summary-numbers">
             <div class="summary-item total">
               <span class="summary-value" id="stat-total">0</span>
-              <span class="summary-label">總任務數</span>
+              <span class="summary-label">學習項目</span>
             </div>
             <div class="summary-item done">
               <span class="summary-value" id="stat-done">0</span>
-              <span class="summary-label">已完成</span>
+              <span class="summary-label">上完課</span>
             </div>
             <div class="summary-item progress">
               <span class="summary-value" id="stat-progress">0</span>
@@ -96,12 +101,12 @@
             </div>
             <div class="summary-item todo">
               <span class="summary-value" id="stat-todo">0</span>
-              <span class="summary-label">待執行</span>
+              <span class="summary-label">待學習</span>
             </div>
           </div>
           <div class="overall-progress">
             <div class="overall-progress-labels">
-              <span>整體完成度</span>
+              <span>整體上課進度</span>
               <span id="overall-percent">0%</span>
             </div>
             <div class="progress-bar-track">
@@ -110,9 +115,42 @@
           </div>
         </section>
 
+        <section class="overview-block" id="courses-block">
+          <div class="overview-block-header" id="courses-header">
+            <h2 class="panel-title">各科進度</h2>
+            <button class="subject-toggle" aria-label="展開/收合">▾</button>
+          </div>
+          <div class="overview-block-body">
+            <div class="stack-legend">
+              <span><i class="legend-dot status-2"></i>上完課</span>
+              <span><i class="legend-dot status-1"></i>學習中</span>
+              <span><i class="legend-dot status-0"></i>待學習</span>
+            </div>
+            <div id="course-progress-list" class="course-progress-list"></div>
+          </div>
+        </section>
+
+        <section class="overview-block" id="recent-block">
+          <div class="overview-block-header" id="recent-header">
+            <h2 class="panel-title">最近 7 天動態<span id="recent-count" class="overview-count"></span></h2>
+            <button class="subject-toggle" aria-label="展開/收合">▾</button>
+          </div>
+          <div id="recent-list" class="task-list-mobile"></div>
+          <p id="no-recent" class="no-results hidden">最近 7 天沒有上課紀錄。</p>
+        </section>
+
+        <section class="overview-block" id="learning-block">
+          <div class="overview-block-header" id="learning-header">
+            <h2 class="panel-title">學習中<span id="learning-count" class="overview-count"></span></h2>
+            <button class="subject-toggle" aria-label="展開/收合">▾</button>
+          </div>
+          <div id="learning-list" class="task-list-mobile"></div>
+          <p id="no-learning" class="no-results hidden">目前沒有學習中的項目。</p>
+        </section>
+
         <section class="overview-block" id="overdue-block">
           <div class="overview-block-header" id="overdue-header">
-            <h2 class="panel-title">逾期<span id="overdue-count" class="overview-count"></span></h2>
+            <h2 class="panel-title">逾期任務<span id="overdue-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="overdue-list" class="task-list-mobile"></div>
@@ -121,7 +159,7 @@
 
         <section class="overview-block" id="today-block">
           <div class="overview-block-header" id="today-header">
-            <h2 class="panel-title">今日<span id="today-count" class="overview-count"></span></h2>
+            <h2 class="panel-title">今日任務<span id="today-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="today-list" class="task-list-mobile"></div>
@@ -130,7 +168,7 @@
 
         <section class="overview-block" id="tomorrow-block">
           <div class="overview-block-header" id="tomorrow-header">
-            <h2 class="panel-title">明日<span id="tomorrow-count" class="overview-count"></span></h2>
+            <h2 class="panel-title">明日任務<span id="tomorrow-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="tomorrow-list" class="task-list-mobile"></div>
@@ -139,52 +177,11 @@
 
       </section>
 
-      <!-- 學習列表頁籤 -->
-      <section id="view-tasks" class="hidden">
-
-        <div id="tasks-course-tabs" class="course-tabs"></div>
-
-        <section class="controls">
-          <div class="status-filter" id="status-filter">
-            <button class="filter-chip active" data-status="all">全部</button>
-            <button class="filter-chip" data-status="0">待執行</button>
-            <button class="filter-chip" data-status="1">學習中</button>
-            <button class="filter-chip" data-status="2">已完成</button>
-          </div>
-          <input type="search" id="search-input" class="search-input" placeholder="搜尋章節、科目或任務...">
-          <div class="mode-toggle" id="mode-toggle">
-            <button class="mode-toggle-btn active" data-mode="list">列表</button>
-            <button class="mode-toggle-btn" data-mode="calendar">日曆</button>
-          </div>
-        </section>
-
-        <!-- 列表模式 -->
-        <section id="list-mode">
-          <section id="subjects-container" class="subjects-container"></section>
-          <p id="no-results" class="no-results hidden">找不到符合條件的項目。</p>
-        </section>
-
-        <!-- 日曆模式 -->
-        <section id="calendar-mode" class="hidden">
-          <div class="calendar-header">
-            <button id="calendar-prev" class="secondary-btn">‹ 上個月</button>
-            <h2 id="calendar-month-label" class="calendar-month-label"></h2>
-            <button id="calendar-next" class="secondary-btn">下個月 ›</button>
-          </div>
-          <div id="calendar-grid" class="calendar-grid"></div>
-
-          <section id="calendar-day-detail" class="requests-panel hidden">
-            <h2 class="panel-title" id="calendar-day-title"></h2>
-            <div id="calendar-day-list" class="task-list-mobile"></div>
-          </section>
-
-          <section id="unscheduled-panel" class="requests-panel">
-            <h2 class="panel-title">未排定日期</h2>
-            <div id="unscheduled-list" class="task-list-mobile"></div>
-            <p id="no-unscheduled" class="no-results hidden">沒有未排定日期的任務。</p>
-          </section>
-        </section>
-
+      <!-- 上課進度頁籤 -->
+      <section id="view-progress" class="hidden">
+        <div id="progress-course-tabs" class="course-tabs"></div>
+        <section id="progress-units" class="subjects-container"></section>
+        <p id="no-progress-units" class="no-results hidden">這個課程還沒有單元。</p>
       </section>
 
       <!-- 任務管理頁籤（家長專用） -->

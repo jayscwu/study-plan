@@ -4,13 +4,17 @@ const STATUS_LABELS = {
   "2": "已完成",
 };
 
+// 上課進度的三種狀態；code 沿用任務狀態的配色（status-0/1/2）
+const PROGRESS_STATUSES = ["待學習", "學習中", "上完課"];
+const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": "2" };
+
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v2.0";
+const APP_VERSION = "v2.1";
 
 const VIEW_TITLES = {
   overview: "儀表板",
-  tasks: "學習列表",
+  progress: "上課進度",
   manage: "任務管理",
 };
 
@@ -48,11 +52,38 @@ const el = {
   errorMessage: document.getElementById("error-message"),
 
   viewOverview: document.getElementById("view-overview"),
-  viewTasks: document.getElementById("view-tasks"),
+  viewProgress: document.getElementById("view-progress"),
   viewManage: document.getElementById("view-manage"),
 
   studentToolbar: document.getElementById("student-toolbar"),
   studentSelect: document.getElementById("student-select"),
+
+  reviewBanner: document.getElementById("review-banner"),
+  reviewBannerText: document.getElementById("review-banner-text"),
+  reviewBannerBtn: document.getElementById("review-banner-btn"),
+
+  statTotal: document.getElementById("stat-total"),
+  statDone: document.getElementById("stat-done"),
+  statProgress: document.getElementById("stat-progress"),
+  statTodo: document.getElementById("stat-todo"),
+  overallPercent: document.getElementById("overall-percent"),
+  overallProgressBar: document.getElementById("overall-progress-bar"),
+
+  coursesBlock: document.getElementById("courses-block"),
+  coursesHeader: document.getElementById("courses-header"),
+  courseProgressList: document.getElementById("course-progress-list"),
+
+  recentBlock: document.getElementById("recent-block"),
+  recentHeader: document.getElementById("recent-header"),
+  recentList: document.getElementById("recent-list"),
+  recentCount: document.getElementById("recent-count"),
+  noRecent: document.getElementById("no-recent"),
+
+  learningBlock: document.getElementById("learning-block"),
+  learningHeader: document.getElementById("learning-header"),
+  learningList: document.getElementById("learning-list"),
+  learningCount: document.getElementById("learning-count"),
+  noLearning: document.getElementById("no-learning"),
 
   overdueBlock: document.getElementById("overdue-block"),
   overdueHeader: document.getElementById("overdue-header"),
@@ -72,11 +103,10 @@ const el = {
   tomorrowCount: document.getElementById("tomorrow-count"),
   noTomorrow: document.getElementById("no-tomorrow"),
 
-  modeToggle: document.getElementById("mode-toggle"),
-  listMode: document.getElementById("list-mode"),
-  calendarMode: document.getElementById("calendar-mode"),
+  progressCourseTabs: document.getElementById("progress-course-tabs"),
+  progressUnits: document.getElementById("progress-units"),
+  noProgressUnits: document.getElementById("no-progress-units"),
 
-  tasksCourseTabs: document.getElementById("tasks-course-tabs"),
   manageCourseTabs: document.getElementById("manage-course-tabs"),
   manageTasksTree: document.getElementById("manage-tasks-tree"),
 
@@ -94,46 +124,25 @@ const el = {
   modalMessage: document.getElementById("modal-message"),
 
   toastContainer: document.getElementById("toast-container"),
-
-  statTotal: document.getElementById("stat-total"),
-  statDone: document.getElementById("stat-done"),
-  statProgress: document.getElementById("stat-progress"),
-  statTodo: document.getElementById("stat-todo"),
-  overallPercent: document.getElementById("overall-percent"),
-  overallProgressBar: document.getElementById("overall-progress-bar"),
-  subjectsContainer: document.getElementById("subjects-container"),
-  statusFilter: document.getElementById("status-filter"),
-  searchInput: document.getElementById("search-input"),
-  noResults: document.getElementById("no-results"),
-
-  calendarPrev: document.getElementById("calendar-prev"),
-  calendarNext: document.getElementById("calendar-next"),
-  calendarMonthLabel: document.getElementById("calendar-month-label"),
-  calendarGrid: document.getElementById("calendar-grid"),
-  calendarDayDetail: document.getElementById("calendar-day-detail"),
-  calendarDayTitle: document.getElementById("calendar-day-title"),
-  calendarDayList: document.getElementById("calendar-day-list"),
-  unscheduledList: document.getElementById("unscheduled-list"),
-  noUnscheduled: document.getElementById("no-unscheduled"),
 };
 
 let session = loadSession();
 let allTasks = [];
-let allCourseUnits = [];
+let allCourses = [];
+let learningItemIndex = new Map();
+let progressByKey = new Map();
+let savingItems = new Set();
 let allStudents = [];
 let currentStudent = null;
-let currentStatusFilter = "all";
-let currentSearch = "";
 let selectedLoginUser = null;
 let editingTaskId = null;
 let addingTaskUnit = null;
 let expandedUnits = new Set();
+let expandedProgressUnits = new Set();
+let expandedDashboardCourses = new Set();
 let currentCourse = null;
 
 let currentView = "overview";
-let dashboardMode = "list";
-let calendarDate = new Date();
-let selectedCalendarDay = null;
 
 // ---------- Session ----------
 
@@ -326,7 +335,7 @@ function applyViewVisibility() {
   const errorHidden = el.errorState.classList.contains("hidden");
   const dataLoaded = loadingHidden && errorHidden;
   el.viewOverview.classList.toggle("hidden", !(dataLoaded && currentView === "overview"));
-  el.viewTasks.classList.toggle("hidden", !(dataLoaded && currentView === "tasks"));
+  el.viewProgress.classList.toggle("hidden", !(dataLoaded && currentView === "progress"));
   el.viewManage.classList.toggle("hidden", !(dataLoaded && currentView === "manage"));
 }
 
@@ -334,13 +343,24 @@ function applyViewVisibility() {
 
 function loadData(silent) {
   if (!silent) showLoading();
-  Promise.all([Api.getTasks(session.name, session.role), Api.getCourseUnits(), Api.getUsers()])
-    .then(([tasksRes, courseUnitsRes, usersRes]) => {
+  Promise.all([
+    Api.getTasks(session.name, session.role),
+    Api.getCourseUnits(),
+    Api.getUsers(),
+    Api.getProgress(session.name, session.role),
+  ])
+    .then(([tasksRes, courseUnitsRes, usersRes, progressRes]) => {
       if (!tasksRes.ok) throw new Error(tasksRes.error || "讀取任務失敗");
-      if (!courseUnitsRes.ok) throw new Error(courseUnitsRes.error || "讀取課程單元失敗");
+      if (!courseUnitsRes.ok || !courseUnitsRes.courses) throw new Error(courseUnitsRes.error || "讀取課程單元失敗");
       if (!usersRes.ok) throw new Error(usersRes.error || "讀取使用者失敗");
+      if (!progressRes.ok) throw new Error(progressRes.error || "讀取上課進度失敗");
       allTasks = tasksRes.tasks;
-      allCourseUnits = courseUnitsRes.units;
+      allCourses = courseUnitsRes.courses;
+      buildLearningItemIndex();
+      // 背景更新時，保留還在儲存中的項目畫面上的狀態
+      const pending = [...savingItems].map((key) => progressByKey.get(key)).filter(Boolean);
+      setProgressRows(progressRes.progress);
+      pending.forEach((p) => progressByKey.set(progressKey(p.student, p.itemId), p));
       allStudents = usersRes.users.filter((u) => u.role === "學生");
 
       if (session.role === "家長") {
@@ -377,7 +397,7 @@ function showLoading() {
   el.loadingState.classList.remove("hidden");
   el.errorState.classList.add("hidden");
   el.viewOverview.classList.add("hidden");
-  el.viewTasks.classList.add("hidden");
+  el.viewProgress.classList.add("hidden");
   el.viewManage.classList.add("hidden");
 }
 
@@ -385,7 +405,7 @@ function showError(err) {
   el.loadingState.classList.add("hidden");
   el.errorState.classList.remove("hidden");
   el.viewOverview.classList.add("hidden");
-  el.viewTasks.classList.add("hidden");
+  el.viewProgress.classList.add("hidden");
   el.viewManage.classList.add("hidden");
   el.errorMessage.textContent = err && err.message
     ? `讀取資料失敗（${err.message}），請確認網路連線或稍後再試。`
@@ -396,6 +416,103 @@ function showData() {
   el.loadingState.classList.add("hidden");
   el.errorState.classList.add("hidden");
   applyViewVisibility();
+}
+
+// ---------- 課程單元 / 上課進度資料 ----------
+
+function buildLearningItemIndex() {
+  learningItemIndex = new Map();
+  allCourses.forEach((course) =>
+    course.units.forEach((unit) =>
+      unit.items.forEach((item) => learningItemIndex.set(item.id, { course, unit, item }))
+    )
+  );
+}
+
+function progressKey(student, itemId) {
+  return `${student}|${itemId}`;
+}
+
+function setProgressRows(rows) {
+  progressByKey = new Map();
+  rows.forEach((p) => progressByKey.set(progressKey(p.student, p.itemId), p));
+}
+
+function getItemProgress(itemId, student) {
+  student = student || currentStudent;
+  return (
+    progressByKey.get(progressKey(student, itemId)) || {
+      student,
+      itemId,
+      status: "待學習",
+      startDate: null,
+      doneDate: null,
+    }
+  );
+}
+
+function countProgress(items) {
+  const counts = { total: items.length, done: 0, progress: 0, todo: 0 };
+  items.forEach((item) => {
+    const status = getItemProgress(item.id).status;
+    if (status === "上完課") counts.done++;
+    else if (status === "學習中") counts.progress++;
+    else counts.todo++;
+  });
+  counts.percent = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
+  return counts;
+}
+
+function courseItems(course) {
+  return course.units.flatMap((u) => u.items);
+}
+
+function todayKey() {
+  const now = new Date();
+  return dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+// 跟後端 handleSetProgress 同樣的日期規則，讓畫面先更新
+function applyProgressChange(prev, status, date) {
+  let startDate = prev.startDate || null;
+  let doneDate = null;
+  if (status === "待學習") {
+    startDate = null;
+  } else if (status === "學習中") {
+    startDate = date;
+  } else {
+    doneDate = date;
+    if (!startDate || startDate > date) startDate = date;
+  }
+  return { ...prev, status, startDate, doneDate, updatedBy: session.name, updatedTime: new Date().toISOString() };
+}
+
+function saveProgress(itemId, status, date) {
+  const student = currentStudent;
+  const key = progressKey(student, itemId);
+  const prevRow = progressByKey.get(key);
+  const prev = getItemProgress(itemId, student);
+  const itemName = learningItemIndex.get(itemId).item.name;
+
+  progressByKey.set(key, applyProgressChange(prev, status, date));
+  savingItems.add(key);
+  renderProgressViews();
+
+  Api.setProgress({ editor: session.name, student, itemId, status, date })
+    .then((res) => {
+      if (!res.ok) throw new Error(res.error || "儲存失敗");
+      progressByKey.set(key, res.progress);
+      showToast(`已儲存：${itemName} → ${status}`, "success");
+    })
+    .catch((err) => {
+      if (prevRow) progressByKey.set(key, prevRow);
+      else progressByKey.delete(key);
+      showToast(`儲存失敗（${err.message}）`, "error");
+    })
+    .finally(() => {
+      savingItems.delete(key);
+      renderProgressViews();
+    });
 }
 
 // ---------- Rendering ----------
@@ -411,28 +528,37 @@ function renderAll() {
   const lastUpdated = new Date().toLocaleString("zh-TW", { hour12: false });
   el.statusBarUpdated.textContent = `最後更新：${lastUpdated}`;
 
-  renderCourseTabs(el.tasksCourseTabs);
+  renderCourseTabs(el.progressCourseTabs);
   renderCourseTabs(el.manageCourseTabs);
 
-  const studentTasks = getStudentTasks();
-  renderSummary(studentTasks);
-  renderOverview(studentTasks);
-  renderSubjects();
-  renderCalendar();
+  renderProgressViews();
+  renderReviewBanner();
+  renderOverview(getStudentTasks());
   renderManageTasksList();
 }
 
+function renderProgressViews() {
+  renderSummary();
+  renderCourseProgress();
+  renderRecent();
+  renderLearning();
+  renderProgressUnits();
+}
+
 function getCourseList() {
-  return [...new Set(allCourseUnits.map((u) => u.course))];
+  return allCourses.map((c) => c.name);
+}
+
+function getCourse(name) {
+  return allCourses.find((c) => c.name === name) || null;
 }
 
 function selectCourse(course) {
   if (currentCourse === course) return;
   currentCourse = course;
-  renderCourseTabs(el.tasksCourseTabs);
+  renderCourseTabs(el.progressCourseTabs);
   renderCourseTabs(el.manageCourseTabs);
-  renderSubjects();
-  renderCalendar();
+  renderProgressUnits();
   renderManageTasksList();
 }
 
@@ -450,19 +576,140 @@ function renderCourseTabs(container) {
   });
 }
 
-function renderSummary(tasks) {
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === "2").length;
-  const progress = tasks.filter((t) => t.status === "1").length;
-  const todo = tasks.filter((t) => t.status === "0").length;
-  const percent = total ? Math.round((done / total) * 100) : 0;
+// ---------- 儀表板 ----------
 
-  el.statTotal.textContent = total;
-  el.statDone.textContent = done;
-  el.statProgress.textContent = progress;
-  el.statTodo.textContent = todo;
-  el.overallPercent.textContent = `${percent}%`;
-  el.overallProgressBar.style.width = `${percent}%`;
+function renderReviewBanner() {
+  if (session.role !== "家長") {
+    el.reviewBanner.classList.add("hidden");
+    return;
+  }
+  const pending = getStudentTasks().filter((t) => t.reportStatus === "待審核").length;
+  el.reviewBanner.classList.toggle("hidden", pending === 0);
+  el.reviewBannerText.textContent = `${currentStudent} 有 ${pending} 筆任務回報待審核`;
+}
+
+el.reviewBannerBtn.addEventListener("click", () => setCurrentView("manage"));
+
+function renderSummary() {
+  const counts = countProgress(allCourses.flatMap(courseItems));
+  el.statTotal.textContent = counts.total;
+  el.statDone.textContent = counts.done;
+  el.statProgress.textContent = counts.progress;
+  el.statTodo.textContent = counts.todo;
+  el.overallPercent.textContent = `${counts.percent}%`;
+  el.overallProgressBar.style.width = `${counts.percent}%`;
+}
+
+function stackBarHtml(counts) {
+  const pct = (n) => (counts.total ? (n / counts.total) * 100 : 0);
+  return `
+    <div class="stack-bar" title="上完課 ${counts.done}・學習中 ${counts.progress}・待學習 ${counts.todo}">
+      <div class="stack-seg status-2" style="width:${pct(counts.done)}%"></div>
+      <div class="stack-seg status-1" style="width:${pct(counts.progress)}%"></div>
+    </div>
+  `;
+}
+
+function renderCourseProgress() {
+  el.courseProgressList.innerHTML = "";
+  allCourses.forEach((course) => {
+    const counts = countProgress(courseItems(course));
+    const expanded = expandedDashboardCourses.has(course.id);
+
+    const row = document.createElement("div");
+    row.className = "course-row" + (expanded ? "" : " collapsed");
+
+    const header = document.createElement("div");
+    header.className = "course-row-header";
+    header.innerHTML = `
+      <span class="course-row-name">${escapeHtml(course.name)}</span>
+      ${stackBarHtml(counts)}
+      <span class="course-row-count">${counts.done}/${counts.total}</span>
+      <button class="subject-toggle" aria-label="展開/收合">▾</button>
+    `;
+    header.addEventListener("click", () => {
+      if (expandedDashboardCourses.has(course.id)) expandedDashboardCourses.delete(course.id);
+      else expandedDashboardCourses.add(course.id);
+      renderCourseProgress();
+    });
+    row.appendChild(header);
+
+    if (expanded) {
+      const body = document.createElement("div");
+      body.className = "course-row-units";
+      course.units.forEach((unit) => body.appendChild(buildProgressUnitCard(course, unit, false)));
+      row.appendChild(body);
+    }
+
+    el.courseProgressList.appendChild(row);
+  });
+}
+
+function shortDate(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const weekday = WEEKDAY_LABELS[new Date(y, m - 1, d).getDay()];
+  return `${m}/${d}（${weekday}）`;
+}
+
+function buildProgressEventItem(itemId, badgeCode, badgeLabel, dateText) {
+  const entry = learningItemIndex.get(itemId);
+  const node = document.createElement("div");
+  node.className = "task-list-item";
+  node.innerHTML = `
+    <div class="task-list-item-text">
+      <div class="task-list-item-course">${escapeHtml(`${entry.course.name}・${entry.unit.name}`)}</div>
+      <div class="task-list-item-chapter">${escapeHtml(entry.item.name)}</div>
+    </div>
+    <div class="task-list-item-actions">
+      <span class="status-badge status-${badgeCode}">${escapeHtml(badgeLabel)}</span>
+      <span class="task-list-item-course">${escapeHtml(dateText)}</span>
+    </div>
+  `;
+  return node;
+}
+
+function studentProgressRows() {
+  return [...progressByKey.values()].filter(
+    (p) => p.student === currentStudent && learningItemIndex.has(p.itemId)
+  );
+}
+
+// 沒有歷史紀錄，所以動態是從目前的開始學習日期、上完課日期整理出來的
+function renderRecent() {
+  const now = new Date();
+  const since = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+  const sinceKey = dateKey(since.getFullYear(), since.getMonth(), since.getDate());
+
+  const events = [];
+  studentProgressRows().forEach((p) => {
+    if (p.status === "上完課" && p.doneDate && p.doneDate >= sinceKey) {
+      events.push({ itemId: p.itemId, code: "2", label: "上完課", date: p.doneDate, rank: 1 });
+    }
+    if (p.status !== "待學習" && p.startDate && p.startDate >= sinceKey && p.startDate !== p.doneDate) {
+      events.push({ itemId: p.itemId, code: "1", label: "開始學習", date: p.startDate, rank: 0 });
+    }
+  });
+  events.sort((a, b) => b.date.localeCompare(a.date) || b.rank - a.rank || b.itemId - a.itemId);
+
+  el.recentCount.textContent = events.length ? `（${events.length}）` : "";
+  el.noRecent.classList.toggle("hidden", events.length > 0);
+  el.recentList.replaceChildren(
+    ...events.map((e) => buildProgressEventItem(e.itemId, e.code, e.label, shortDate(e.date)))
+  );
+}
+
+function renderLearning() {
+  const rows = studentProgressRows()
+    .filter((p) => p.status === "學習中")
+    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || "") || a.itemId - b.itemId);
+
+  el.learningCount.textContent = rows.length ? `（${rows.length}）` : "";
+  el.noLearning.classList.toggle("hidden", rows.length > 0);
+  el.learningList.replaceChildren(
+    ...rows.map((p) =>
+      buildProgressEventItem(p.itemId, "1", "學習中", p.startDate ? `${shortDate(p.startDate)} 開始` : "")
+    )
+  );
 }
 
 function renderOverviewGroup(tasks, listEl, countEl, noResultsEl) {
@@ -478,7 +725,7 @@ function renderOverviewGroup(tasks, listEl, countEl, noResultsEl) {
 
 function renderOverview(tasks) {
   const now = new Date();
-  const todayStr = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayStr = todayKey();
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const tomorrowStr = dateKey(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
 
@@ -491,77 +738,161 @@ function renderOverview(tasks) {
   renderOverviewGroup(tomorrowTasks, el.tomorrowList, el.tomorrowCount, el.noTomorrow);
 }
 
-el.overdueHeader.addEventListener("click", () => el.overdueBlock.classList.toggle("collapsed"));
-el.todayHeader.addEventListener("click", () => el.todayBlock.classList.toggle("collapsed"));
-el.tomorrowHeader.addEventListener("click", () => el.tomorrowBlock.classList.toggle("collapsed"));
+[
+  [el.coursesHeader, el.coursesBlock],
+  [el.recentHeader, el.recentBlock],
+  [el.learningHeader, el.learningBlock],
+  [el.overdueHeader, el.overdueBlock],
+  [el.todayHeader, el.todayBlock],
+  [el.tomorrowHeader, el.tomorrowBlock],
+].forEach(([header, block]) => header.addEventListener("click", () => block.classList.toggle("collapsed")));
 
-function getFilteredTasks() {
-  const search = currentSearch.trim().toLowerCase();
-  return getStudentTasks().filter((t) => {
-    if (t.course !== currentCourse) return false;
-    if (currentStatusFilter !== "all" && t.status !== currentStatusFilter) return false;
-    if (!search) return true;
-    const haystack = `${t.course} ${t.unit} ${t.task}`.toLowerCase();
-    return haystack.includes(search);
-  });
-}
+// ---------- 上課進度 ----------
 
-function groupBy(tasks, key) {
-  const map = new Map();
-  for (const t of tasks) {
-    if (!map.has(t[key])) map.set(t[key], []);
-    map.get(t[key]).push(t);
-  }
-  return map;
-}
-
-// ---------- List mode ----------
-
-function renderSubjects() {
-  const filtered = getFilteredTasks();
-  el.subjectsContainer.innerHTML = "";
-
-  if (filtered.length === 0) {
-    el.noResults.classList.remove("hidden");
+function renderProgressUnits() {
+  el.progressUnits.innerHTML = "";
+  const course = getCourse(currentCourse);
+  if (!course || course.units.length === 0) {
+    el.noProgressUnits.classList.remove("hidden");
     return;
   }
-  el.noResults.classList.add("hidden");
+  el.noProgressUnits.classList.add("hidden");
 
-  const byUnit = groupBy(filtered, "unit");
-  for (const [unit, unitTasks] of byUnit) {
-    el.subjectsContainer.appendChild(buildUnitCard(unit, unitTasks));
-  }
+  course.units.forEach((unit) => el.progressUnits.appendChild(buildProgressUnitCard(course, unit, true)));
+
+  // 課程底下、但「單元名稱」對不到任何單元的任務，另外列出來以免看不到
+  const unitNames = new Set(course.units.map((u) => u.name));
+  const orphanTasks = getStudentTasks().filter((t) => t.course === course.name && !unitNames.has(t.unit));
+  if (orphanTasks.length) el.progressUnits.appendChild(buildOrphanTaskCard(orphanTasks));
 }
 
-function buildUnitCard(unit, tasks) {
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === "2").length;
-  const percent = total ? Math.round((done / total) * 100) : 0;
+function buildOrphanTaskCard(tasks) {
+  const card = document.createElement("section");
+  card.className = "subject-card";
+  card.innerHTML = `
+    <div class="subject-header">
+      <div class="subject-title-group">
+        <h4 class="subject-title">其他任務</h4>
+        <span class="subject-percent">單元名稱對不到課程單元表</span>
+      </div>
+    </div>
+  `;
+  card.appendChild(buildTaskListMobile(tasks));
+  return card;
+}
+
+function buildProgressUnitCard(course, unit, showTasks) {
+  const counts = countProgress(unit.items);
+  const tasks = showTasks
+    ? getStudentTasks().filter((t) => t.course === course.name && t.unit === unit.name)
+    : [];
 
   const card = document.createElement("section");
-  card.className = "subject-card collapsed";
+  card.className = "subject-card" + (expandedProgressUnits.has(unit.id) ? "" : " collapsed");
 
   const header = document.createElement("div");
   header.className = "subject-header";
   header.innerHTML = `
     <div class="subject-title-group">
-      <h4 class="subject-title">${escapeHtml(unit)}</h4>
+      <h4 class="subject-title">${escapeHtml(unit.name)}</h4>
       <div class="subject-mini-progress">
-        <div class="subject-mini-progress-fill" style="width:${percent}%"></div>
+        <div class="subject-mini-progress-fill" style="width:${counts.percent}%"></div>
       </div>
-      <span class="subject-percent">${done}/${total}・${percent}%</span>
+      <span class="subject-percent">上完課 ${counts.done}/${counts.total}${tasks.length ? `・任務 ${tasks.length}` : ""}</span>
     </div>
     <button class="subject-toggle" aria-label="展開/收合">▾</button>
   `;
   header.addEventListener("click", () => {
+    if (expandedProgressUnits.has(unit.id)) expandedProgressUnits.delete(unit.id);
+    else expandedProgressUnits.add(unit.id);
     card.classList.toggle("collapsed");
   });
   card.appendChild(header);
 
-  card.appendChild(buildTaskListSimple(tasks));
+  const body = document.createElement("div");
+  body.className = "subject-body";
 
+  if (unit.items.length === 0) {
+    body.innerHTML = `<p class="progress-empty">這個單元沒有學習項目。</p>`;
+  } else {
+    const list = document.createElement("div");
+    list.className = "progress-item-list";
+    unit.items.forEach((item) => list.appendChild(buildProgressItemRow(item)));
+    body.appendChild(list);
+  }
+
+  if (tasks.length) {
+    const title = document.createElement("div");
+    title.className = "progress-tasks-title";
+    title.textContent = "家長交代的任務";
+    body.appendChild(title);
+    body.appendChild(buildTaskListSimple(tasks));
+  }
+
+  card.appendChild(body);
   return card;
 }
+
+function buildProgressItemRow(item) {
+  const p = getItemProgress(item.id);
+  const code = PROGRESS_STATUS_CODE[p.status];
+  const saving = savingItems.has(progressKey(currentStudent, item.id));
+  const dateValue = p.status === "上完課" ? p.doneDate : p.status === "學習中" ? p.startDate : "";
+  const dateLabel = p.status === "上完課" ? "上完課" : "開始";
+  const meta = [];
+  if (p.status === "上完課" && p.startDate && p.startDate !== p.doneDate) meta.push(`${p.startDate} 開始`);
+  if (saving) meta.push("儲存中...");
+
+  const row = document.createElement("div");
+  row.className = `progress-item status-${code}` + (saving ? " saving" : "");
+  row.innerHTML = `
+    <div class="progress-item-text">
+      <div class="progress-item-name">${escapeHtml(item.name)}</div>
+      ${meta.length ? `<div class="progress-item-meta">${escapeHtml(meta.join("・"))}</div>` : ""}
+    </div>
+    <div class="progress-item-controls">
+      <div class="seg" role="group" aria-label="上課狀態">
+        ${PROGRESS_STATUSES.map(
+          (s) =>
+            `<button class="seg-btn status-${PROGRESS_STATUS_CODE[s]}${s === p.status ? " active" : ""}" data-status="${s}"${saving ? " disabled" : ""}>${s}</button>`
+        ).join("")}
+      </div>
+      ${
+        p.status === "待學習"
+          ? ""
+          : `<label class="progress-date"><span>${dateLabel}</span><input type="date" max="${todayKey()}" value="${escapeHtml(dateValue || "")}"${saving ? " disabled" : ""}></label>`
+      }
+    </div>
+  `;
+
+  row.querySelectorAll(".seg-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const status = btn.dataset.status;
+      if (status === p.status) return;
+      // 從上完課退回學習中時保留原本的開始日期，其他情況預設今天
+      const date = status === "待學習" ? "" : status === "學習中" && p.startDate ? p.startDate : todayKey();
+      saveProgress(item.id, status, date);
+    });
+  });
+
+  const dateInput = row.querySelector('input[type="date"]');
+  if (dateInput) {
+    dateInput.addEventListener("change", () => {
+      const value = dateInput.value;
+      if (!value || value > todayKey()) {
+        dateInput.value = dateValue || "";
+        showToast(value ? "不能填未來的日期" : "請選擇日期", "error");
+        return;
+      }
+      if (value === dateValue) return;
+      saveProgress(item.id, p.status, value);
+    });
+  }
+
+  return row;
+}
+
+// ---------- 任務卡片 ----------
 
 function reportActionHtml(t) {
   if (session.role !== "學生") {
@@ -580,9 +911,9 @@ function buildTaskListItem(t, showCourse) {
   item.className = "task-list-item";
   item.innerHTML = `
     <div class="task-list-item-text">
-      ${showCourse ? `<div class="task-list-item-course">${escapeHtml(t.course)}</div>` : ""}
-      <div class="task-list-item-chapter">${escapeHtml(t.unit)}</div>
-      <div class="task-list-item-type">${escapeHtml(t.task)}</div>
+      ${showCourse ? `<div class="task-list-item-course">${escapeHtml(`${t.course}・${t.unit}`)}</div>` : ""}
+      <div class="task-list-item-chapter">${escapeHtml(t.task)}</div>
+      ${t.date ? `<div class="task-list-item-type">${escapeHtml(t.date)}</div>` : ""}
     </div>
     <div class="task-list-item-actions">
       ${timeSlotBadge(t.timeSlot)}
@@ -635,19 +966,7 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ---------- List / Calendar toggle ----------
-
-el.modeToggle.addEventListener("click", (e) => {
-  const btn = e.target.closest(".mode-toggle-btn");
-  if (!btn) return;
-  dashboardMode = btn.dataset.mode;
-  [...el.modeToggle.children].forEach((c) => c.classList.toggle("active", c === btn));
-  el.listMode.classList.toggle("hidden", dashboardMode !== "list");
-  el.calendarMode.classList.toggle("hidden", dashboardMode !== "calendar");
-  if (dashboardMode === "calendar") renderCalendar();
-});
-
-// ---------- Calendar mode ----------
+// ---------- Shared helpers ----------
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -656,98 +975,6 @@ function pad2(n) {
 function dateKey(y, m, d) {
   return `${y}-${pad2(m + 1)}-${pad2(d)}`;
 }
-
-el.calendarPrev.addEventListener("click", () => {
-  calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1);
-  selectedCalendarDay = null;
-  renderCalendar();
-});
-
-el.calendarNext.addEventListener("click", () => {
-  calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1);
-  selectedCalendarDay = null;
-  renderCalendar();
-});
-
-function renderCalendar() {
-  if (dashboardMode !== "calendar") return;
-
-  const tasks = getFilteredTasks();
-  const byDate = new Map();
-  const unscheduled = [];
-  for (const t of tasks) {
-    if (!t.date) {
-      unscheduled.push(t);
-      continue;
-    }
-    if (!byDate.has(t.date)) byDate.set(t.date, []);
-    byDate.get(t.date).push(t);
-  }
-
-  const year = calendarDate.getFullYear();
-  const month = calendarDate.getMonth();
-  el.calendarMonthLabel.textContent = `${year} 年 ${month + 1} 月`;
-
-  const firstDay = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startWeekday = firstDay.getDay();
-  const today = new Date();
-  const todayKey = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
-
-  el.calendarGrid.innerHTML = "";
-  WEEKDAY_LABELS.forEach((label) => {
-    const cell = document.createElement("div");
-    cell.className = "calendar-weekday";
-    cell.textContent = label;
-    el.calendarGrid.appendChild(cell);
-  });
-
-  for (let i = 0; i < startWeekday; i++) {
-    const empty = document.createElement("div");
-    empty.className = "calendar-day empty";
-    el.calendarGrid.appendChild(empty);
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const key = dateKey(year, month, d);
-    const dayTasks = byDate.get(key) || [];
-    const cell = document.createElement("div");
-    cell.className = "calendar-day";
-    if (key === todayKey) cell.classList.add("today");
-    if (key === selectedCalendarDay) cell.classList.add("selected");
-
-    const shown = dayTasks.slice(0, 3);
-    const more = dayTasks.length - shown.length;
-    cell.innerHTML = `
-      <span class="calendar-day-number">${d}</span>
-      ${shown.map((t) => `<span class="calendar-day-chip status-badge status-${t.status}">${escapeHtml(t.unit)}</span>`).join("")}
-      ${more > 0 ? `<span class="calendar-day-more">+${more}</span>` : ""}
-    `;
-    cell.addEventListener("click", () => {
-      selectedCalendarDay = key;
-      renderCalendar();
-    });
-    el.calendarGrid.appendChild(cell);
-  }
-
-  if (selectedCalendarDay && byDate.has(selectedCalendarDay)) {
-    el.calendarDayDetail.classList.remove("hidden");
-    el.calendarDayTitle.textContent = `${selectedCalendarDay} 的任務`;
-    el.calendarDayList.replaceChildren(...buildTaskListMobile(byDate.get(selectedCalendarDay)).children);
-  } else {
-    el.calendarDayDetail.classList.add("hidden");
-  }
-
-  el.unscheduledList.innerHTML = "";
-  if (unscheduled.length === 0) {
-    el.noUnscheduled.classList.remove("hidden");
-  } else {
-    el.noUnscheduled.classList.add("hidden");
-    el.unscheduledList.replaceChildren(...buildTaskListMobile(unscheduled).children);
-  }
-}
-
-// ---------- Shared helpers ----------
 
 function formatTime(value) {
   if (!value) return "";
@@ -775,20 +1002,21 @@ function renderManageTasksList() {
   if (session.role !== "家長") return;
   el.manageTasksTree.innerHTML = "";
   if (!currentCourse) return;
+  const course = getCourse(currentCourse);
+  if (!course) return;
   const studentTasks = allTasks.filter((t) => t.student === currentStudent);
-  const units = allCourseUnits.filter((u) => u.course === currentCourse);
-  units.forEach((u) => {
-    const unitTasks = studentTasks.filter((t) => t.course === currentCourse && t.unit === u.unit);
-    el.manageTasksTree.appendChild(buildManageUnitCard(currentCourse, u, unitTasks));
+  course.units.forEach((u) => {
+    const unitTasks = studentTasks.filter((t) => t.course === course.name && t.unit === u.name);
+    el.manageTasksTree.appendChild(buildManageUnitCard(course.name, u, unitTasks));
   });
 }
 
 function buildManageUnitCard(course, u, tasks) {
-  const key = unitKey(course, u.unit);
+  const key = unitKey(course, u.name);
   const card = document.createElement("section");
   card.className = "subject-card" + (expandedUnits.has(key) ? "" : " collapsed");
 
-  const label = `${u.unitCode} ${u.unit}`.trim();
+  const label = u.name;
   const header = document.createElement("div");
   header.className = "subject-header";
   header.innerHTML = `
@@ -813,7 +1041,7 @@ function buildManageUnitCard(course, u, tasks) {
   tasks.forEach((t) => body.appendChild(buildManageTaskRow(t)));
   card.appendChild(body);
 
-  card.appendChild(buildAddTaskControl(course, u.unit, key));
+  card.appendChild(buildAddTaskControl(course, u.name, key));
 
   return card;
 }
@@ -1090,9 +1318,9 @@ function populateModalOptions() {
 }
 
 function populateModalUnitSelect(course) {
-  const units = allCourseUnits.filter((u) => u.course === course);
+  const units = getCourse(course) ? getCourse(course).units : [];
   el.modalUnitSelect.innerHTML = units
-    .map((u) => `<option value="${escapeHtml(u.unit)}">${escapeHtml(`${u.unitCode} ${u.unit}`.trim())}</option>`)
+    .map((u) => `<option value="${escapeHtml(u.name)}">${escapeHtml(u.name)}</option>`)
     .join("");
 }
 
@@ -1161,29 +1389,12 @@ el.modalAddBtn.addEventListener("click", () => {
     });
 });
 
-// ---------- Filters ----------
-
-el.statusFilter.addEventListener("click", (e) => {
-  const chip = e.target.closest(".filter-chip");
-  if (!chip) return;
-  currentStatusFilter = chip.dataset.status;
-  [...el.statusFilter.children].forEach((c) => c.classList.toggle("active", c === chip));
-  renderSubjects();
-  renderCalendar();
-});
-
-el.searchInput.addEventListener("input", (e) => {
-  currentSearch = e.target.value;
-  renderSubjects();
-  renderCalendar();
-});
-
 el.refreshBtn.addEventListener("click", () => {
   el.refreshBtn.classList.add("spinning");
   loadData();
   setTimeout(() => el.refreshBtn.classList.remove("spinning"), 800);
 });
 
-el.retryBtn.addEventListener("click", loadData);
+el.retryBtn.addEventListener("click", () => loadData());
 
 init();
