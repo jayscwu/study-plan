@@ -1431,8 +1431,10 @@ body {
 }
 
 /* 欄位高度照內容自動長高，捲整頁來看下面的內容 */
+/* 寬螢幕有剩餘空間時各欄平均變寬，最寬 360px */
 .board-column {
-  flex: 0 0 260px;
+  flex: 1 0 260px;
+  max-width: 360px;
   background: var(--color-surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -1716,6 +1718,21 @@ body {
 }
 
 /* Mobile */
+
+/* 看板模式撐滿螢幕寬（手機本來就是滿版，不用調整） */
+
+@media (min-width: 641px) {
+  .app.wide {
+    max-width: none;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .app.wide .status-bar {
+    margin: -16px -24px 0;
+    padding: 10px 24px;
+  }
+}
 
 @media (max-width: 640px) {
   .summary-numbers {

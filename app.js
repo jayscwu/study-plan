@@ -10,7 +10,7 @@ const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": 
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v2.5";
+const APP_VERSION = "v2.6";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -32,6 +32,7 @@ const el = {
   loginSubmitBtn: document.getElementById("login-submit-btn"),
   loginLoadError: document.getElementById("login-load-error"),
 
+  appRoot: document.querySelector(".app"),
   appView: document.getElementById("app-view"),
   logoutBtn: document.getElementById("logout-btn"),
   mainNav: document.getElementById("main-nav"),
@@ -337,6 +338,12 @@ function setCurrentView(view) {
   el.statusBarViewTitle.textContent = VIEW_TITLES[currentView];
   applyViewVisibility();
   updateFabVisibility();
+  updateWideLayout();
+}
+
+// 只有「上課進度」的看板模式撐滿螢幕寬，其他畫面維持置中的閱讀寬度
+function updateWideLayout() {
+  el.appRoot.classList.toggle("wide", currentView === "progress" && progressPrefs.view === "board");
 }
 
 function updateFabVisibility() {
@@ -950,6 +957,7 @@ function applyProgressMode() {
   );
   el.progressAccordion.classList.toggle("hidden", board);
   el.progressBoard.classList.toggle("hidden", !board);
+  updateWideLayout();
 }
 
 el.progressModeToggle.addEventListener("click", (e) => {
