@@ -44,7 +44,15 @@
         <span id="status-bar-view-title" class="status-bar-view-title"></span>
         <span id="status-bar-updated" class="status-bar-updated"></span>
       </div>
-      <button id="refresh-btn" class="icon-btn" title="重新整理資料">⟳</button>
+      <!-- 手機版頁首：大標題＋副標題 -->
+      <div class="page-header">
+        <h1 id="page-title" class="page-title"></h1>
+        <p class="page-subtitle"><span data-icon="userCircle"></span><span id="page-subtitle-text"></span></p>
+      </div>
+      <div class="status-bar-actions">
+        <button id="filter-btn" class="filter-btn hidden"><span data-icon="sliders"></span>篩選</button>
+        <button id="refresh-btn" class="icon-btn" title="重新整理資料" aria-label="重新整理資料"><span data-icon="refresh"></span></button>
+      </div>
     </header>
 
     <div id="user-menu" class="user-menu hidden">
@@ -79,6 +87,21 @@
 
       <!-- 儀表板頁籤 -->
       <section id="view-overview" class="hidden">
+
+        <!-- 手機版首頁：個人資料卡 -->
+        <section class="profile-card home-profile">
+          <div class="profile-main">
+            <span id="home-avatar" class="login-user-avatar"></span>
+            <div>
+              <p id="home-name" class="profile-name"></p>
+              <p id="home-sub" class="profile-sub"></p>
+            </div>
+          </div>
+          <div class="profile-actions">
+            <button id="home-go-progress"><span data-icon="progress"></span>登錄上課進度</button>
+            <button id="home-go-learning"><span data-icon="book"></span>查看學習中</button>
+          </div>
+        </section>
 
         <section id="review-banner" class="review-banner hidden">
           <span id="review-banner-text"></span>
@@ -117,7 +140,7 @@
 
         <section class="overview-block" id="courses-block">
           <div class="overview-block-header" id="courses-header">
-            <h2 class="panel-title">各科進度</h2>
+            <h2 class="panel-title"><span class="section-icon" data-icon="chart"></span>各科進度</h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div class="overview-block-body">
@@ -132,7 +155,7 @@
 
         <section class="overview-block" id="recent-block">
           <div class="overview-block-header" id="recent-header">
-            <h2 class="panel-title">最近 7 天動態<span id="recent-count" class="overview-count"></span></h2>
+            <h2 class="panel-title"><span class="section-icon" data-icon="clock"></span>最近 7 天動態<span id="recent-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="recent-list" class="task-list-mobile"></div>
@@ -141,7 +164,7 @@
 
         <section class="overview-block" id="learning-block">
           <div class="overview-block-header" id="learning-header">
-            <h2 class="panel-title">學習中<span id="learning-count" class="overview-count"></span></h2>
+            <h2 class="panel-title"><span class="section-icon" data-icon="book"></span>學習中<span id="learning-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="learning-list" class="task-list-mobile"></div>
@@ -150,7 +173,7 @@
 
         <section class="overview-block" id="overdue-block">
           <div class="overview-block-header" id="overdue-header">
-            <h2 class="panel-title">逾期任務<span id="overdue-count" class="overview-count"></span></h2>
+            <h2 class="panel-title"><span class="section-icon" data-icon="alert"></span>逾期任務<span id="overdue-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="overdue-list" class="task-list-mobile"></div>
@@ -159,7 +182,7 @@
 
         <section class="overview-block" id="today-block">
           <div class="overview-block-header" id="today-header">
-            <h2 class="panel-title">今日任務<span id="today-count" class="overview-count"></span></h2>
+            <h2 class="panel-title"><span class="section-icon" data-icon="calendar"></span>今日任務<span id="today-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="today-list" class="task-list-mobile"></div>
@@ -168,7 +191,7 @@
 
         <section class="overview-block" id="tomorrow-block">
           <div class="overview-block-header" id="tomorrow-header">
-            <h2 class="panel-title">明日任務<span id="tomorrow-count" class="overview-count"></span></h2>
+            <h2 class="panel-title"><span class="section-icon" data-icon="calendar"></span>明日任務<span id="tomorrow-count" class="overview-count"></span></h2>
             <button class="subject-toggle" aria-label="展開/收合">▾</button>
           </div>
           <div id="tomorrow-list" class="task-list-mobile"></div>
@@ -214,6 +237,34 @@
         </section>
       </section>
 
+      <!-- 我的（手機版底部導覽列進入） -->
+      <section id="view-me" class="hidden">
+        <section class="profile-card">
+          <div class="profile-main">
+            <span id="me-avatar" class="login-user-avatar"></span>
+            <div>
+              <p id="me-name" class="profile-name"></p>
+              <p id="me-role" class="profile-sub"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="me-students" class="me-section hidden">
+          <h2 class="section-title"><span data-icon="user"></span>檢視學生</h2>
+          <div id="me-student-list" class="option-list"></div>
+        </section>
+
+        <section class="me-section">
+          <h2 class="section-title"><span data-icon="clock"></span>資料</h2>
+          <div class="info-card">
+            <div class="info-row"><span>最後更新</span><span id="me-updated"></span></div>
+            <div class="info-row"><span>版本</span><span id="me-version"></span></div>
+          </div>
+        </section>
+
+        <button id="me-logout-btn" class="outline-btn block"><span data-icon="logout"></span>登出</button>
+      </section>
+
       <!-- 任務管理頁籤（家長專用） -->
       <section id="view-manage" class="hidden">
         <div id="manage-course-tabs" class="course-tabs"></div>
@@ -225,6 +276,40 @@
     <footer class="app-footer">
       <p>資料來源：Google Sheet ・ 僅供學習進度檢視</p>
     </footer>
+
+    <!-- 手機版底部導覽列 -->
+    <nav id="bottom-nav" class="bottom-nav">
+      <button class="bottom-nav-item active" data-view="overview"><span data-icon="home"></span><span>首頁</span></button>
+      <button class="bottom-nav-item" data-view="progress"><span data-icon="progress"></span><span>上課進度</span></button>
+      <button class="bottom-nav-item" data-view="manage" id="bottom-nav-manage">
+        <span class="bottom-nav-icon"><span data-icon="tasks"></span><span id="manage-badge" class="nav-badge hidden"></span></span>
+        <span>任務管理</span>
+      </button>
+      <button class="bottom-nav-item" data-view="me"><span data-icon="user"></span><span>我的</span></button>
+    </nav>
+
+    <!-- 上課進度：篩選底部面板（手機版） -->
+    <div id="filter-sheet-overlay" class="sheet-overlay hidden">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="filter-sheet-title">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <h2 id="filter-sheet-title" class="sheet-title">篩選</h2>
+          <button id="filter-sheet-close" class="sheet-close" aria-label="關閉"><span data-icon="x"></span></button>
+        </div>
+        <p class="sheet-label">檢視模式</p>
+        <div id="sheet-mode-options" class="option-list"></div>
+        <div id="sheet-board-filters">
+          <p class="sheet-label">科目</p>
+          <div id="sheet-course-chips" class="status-filter"></div>
+          <p class="sheet-label">狀態</p>
+          <div id="sheet-status-chips" class="status-filter"></div>
+        </div>
+        <div class="sheet-footer">
+          <button id="filter-sheet-reset" class="outline-btn">重設</button>
+          <button id="filter-sheet-apply" class="solid-btn">套用</button>
+        </div>
+      </div>
+    </div>
 
     <button id="task-fab" class="task-fab hidden" aria-label="新增任務">+</button>
 

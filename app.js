@@ -10,12 +10,13 @@ const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": 
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v2.6";
+const APP_VERSION = "v3.0";
 
 const VIEW_TITLES = {
   overview: "儀表板",
   progress: "上課進度",
   manage: "任務管理",
+  me: "我的",
 };
 
 const SESSION_KEY = "studyplan_session";
@@ -56,6 +57,39 @@ const el = {
   viewOverview: document.getElementById("view-overview"),
   viewProgress: document.getElementById("view-progress"),
   viewManage: document.getElementById("view-manage"),
+  viewMe: document.getElementById("view-me"),
+
+  pageTitle: document.getElementById("page-title"),
+  pageSubtitleText: document.getElementById("page-subtitle-text"),
+  filterBtn: document.getElementById("filter-btn"),
+
+  homeAvatar: document.getElementById("home-avatar"),
+  homeName: document.getElementById("home-name"),
+  homeSub: document.getElementById("home-sub"),
+  homeGoProgress: document.getElementById("home-go-progress"),
+  homeGoLearning: document.getElementById("home-go-learning"),
+
+  meAvatar: document.getElementById("me-avatar"),
+  meName: document.getElementById("me-name"),
+  meRole: document.getElementById("me-role"),
+  meStudents: document.getElementById("me-students"),
+  meStudentList: document.getElementById("me-student-list"),
+  meUpdated: document.getElementById("me-updated"),
+  meVersion: document.getElementById("me-version"),
+  meLogoutBtn: document.getElementById("me-logout-btn"),
+
+  bottomNav: document.getElementById("bottom-nav"),
+  bottomNavManage: document.getElementById("bottom-nav-manage"),
+  manageBadge: document.getElementById("manage-badge"),
+
+  filterSheetOverlay: document.getElementById("filter-sheet-overlay"),
+  filterSheetClose: document.getElementById("filter-sheet-close"),
+  filterSheetReset: document.getElementById("filter-sheet-reset"),
+  filterSheetApply: document.getElementById("filter-sheet-apply"),
+  sheetModeOptions: document.getElementById("sheet-mode-options"),
+  sheetBoardFilters: document.getElementById("sheet-board-filters"),
+  sheetCourseChips: document.getElementById("sheet-course-chips"),
+  sheetStatusChips: document.getElementById("sheet-status-chips"),
 
   studentToolbar: document.getElementById("student-toolbar"),
   studentSelect: document.getElementById("student-select"),
@@ -312,7 +346,9 @@ function enterApp() {
   renderStatusBar();
   el.studentToolbar.classList.toggle("hidden", session.role !== "家長");
   el.navManageBtn.classList.toggle("hidden", session.role !== "家長");
+  el.bottomNavManage.classList.toggle("hidden", session.role !== "家長");
   updateFabVisibility();
+  updatePageHeader();
   loadData();
 }
 
@@ -335,10 +371,12 @@ el.mainNav.addEventListener("click", (e) => {
 function setCurrentView(view) {
   currentView = view;
   [...el.mainNav.children].forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
+  [...el.bottomNav.children].forEach((btn) => btn.classList.toggle("active", btn.dataset.view === view));
   el.statusBarViewTitle.textContent = VIEW_TITLES[currentView];
   applyViewVisibility();
   updateFabVisibility();
   updateWideLayout();
+  updatePageHeader();
 }
 
 // 只有「上課進度」的看板模式撐滿螢幕寬，其他畫面維持置中的閱讀寬度
@@ -358,6 +396,7 @@ function applyViewVisibility() {
   el.viewOverview.classList.toggle("hidden", !(dataLoaded && currentView === "overview"));
   el.viewProgress.classList.toggle("hidden", !(dataLoaded && currentView === "progress"));
   el.viewManage.classList.toggle("hidden", !(dataLoaded && currentView === "manage"));
+  el.viewMe.classList.toggle("hidden", !(dataLoaded && currentView === "me"));
 }
 
 // ---------- Data loading ----------
@@ -409,12 +448,15 @@ function loadData(silent) {
     });
 }
 
-el.studentSelect.addEventListener("change", (e) => {
-  currentStudent = e.target.value;
+function selectStudent(name) {
+  currentStudent = name;
+  el.studentSelect.value = name;
   boardOpenUnits = null;
   boardBarPercent.clear();
   renderAll();
-});
+}
+
+el.studentSelect.addEventListener("change", (e) => selectStudent(e.target.value));
 
 function showLoading() {
   el.loadingState.classList.remove("hidden");
@@ -422,6 +464,7 @@ function showLoading() {
   el.viewOverview.classList.add("hidden");
   el.viewProgress.classList.add("hidden");
   el.viewManage.classList.add("hidden");
+  el.viewMe.classList.add("hidden");
 }
 
 function showError(err) {
@@ -430,6 +473,7 @@ function showError(err) {
   el.viewOverview.classList.add("hidden");
   el.viewProgress.classList.add("hidden");
   el.viewManage.classList.add("hidden");
+  el.viewMe.classList.add("hidden");
   el.errorMessage.textContent = err && err.message
     ? `讀取資料失敗（${err.message}），請確認網路連線或稍後再試。`
     : "讀取資料失敗，請確認網路連線或稍後再試。";
@@ -558,6 +602,9 @@ function renderAll() {
   renderReviewBanner();
   renderOverview(getStudentTasks());
   renderManageTasksList();
+  renderManageBadge();
+  renderMe();
+  updatePageHeader();
 }
 
 function renderProgressViews() {
@@ -567,6 +614,7 @@ function renderProgressViews() {
   renderLearning();
   renderProgressUnits();
   renderProgressBoard();
+  renderHomeProfile();
 }
 
 function getCourseList() {
@@ -958,6 +1006,7 @@ function applyProgressMode() {
   el.progressAccordion.classList.toggle("hidden", board);
   el.progressBoard.classList.toggle("hidden", !board);
   updateWideLayout();
+  updatePageHeader();
 }
 
 el.progressModeToggle.addEventListener("click", (e) => {
@@ -983,6 +1032,7 @@ function toggleFilterValue(key, value, allValues) {
   progressPrefs[key] = next;
   saveProgressPrefs();
   renderProgressBoard();
+  updatePageHeader();
 }
 
 function renderFilterChips(container, key, allValues) {
@@ -1765,5 +1815,228 @@ el.refreshBtn.addEventListener("click", () => {
 
 el.retryBtn.addEventListener("click", () => loadData());
 
+// ---------- 圖示（內嵌線條圖示，data-icon 屬性在載入時填入） ----------
+
+const ICONS = {
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h5v-6h4v6h5V9.5"/>',
+  progress: '<path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5"/>',
+  tasks: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+  userCircle: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.5 18.5c1.2-2 3.2-3 5.5-3s4.3 1 5.5 3"/>',
+  sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>',
+  chart: '<path d="M4 4v16h16"/><path d="M8 16v-5M12 16V8M16 16v-3"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  book: '<path d="M3 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H3z"/><path d="M21 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z"/>',
+  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  logout: '<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>',
+  accordion: '<rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/>',
+  board: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="14" rx="1"/>',
+};
+
+function iconSvg(name) {
+  return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+}
+
+function fillIcons(root) {
+  (root || document).querySelectorAll("[data-icon]").forEach((node) => {
+    node.classList.add("icon");
+    node.innerHTML = iconSvg(node.dataset.icon);
+  });
+}
+
+// ---------- 手機版頁首 ----------
+
+const PAGE_TITLES = {
+  overview: "學習計畫",
+  progress: "上課進度",
+  manage: "任務管理",
+  me: "我的",
+};
+
+function progressScopeText() {
+  if (progressPrefs.view !== "board") return "手風琴";
+  const parts = ["看板"];
+  const courses = progressPrefs.courses.filter((c) => getCourseList().includes(c));
+  if (courses.length === 0) parts.push("全部科目");
+  else if (courses.length <= 2) parts.push(courses.join("、"));
+  else parts.push(`${courses.length} 個科目`);
+  if (progressPrefs.statuses.length) parts.push(progressPrefs.statuses.join("、"));
+  return parts.join("・");
+}
+
+function updatePageHeader() {
+  if (!session) return;
+  el.pageTitle.textContent = PAGE_TITLES[currentView];
+  const who = session.role === "家長" ? `檢視 ${currentStudent || "—"}` : session.name;
+  const extra = currentView === "progress" ? progressScopeText() : session.role;
+  el.pageSubtitleText.textContent = `${who}・${extra}`;
+  el.filterBtn.classList.toggle("hidden", currentView !== "progress");
+}
+
+// ---------- 首頁個人資料卡 ----------
+
+function renderHomeProfile() {
+  const name = currentStudent || session.name;
+  const counts = countProgress(allCourses.flatMap(courseItems));
+  el.homeAvatar.textContent = name.slice(0, 1).toUpperCase();
+  el.homeName.textContent = name;
+  el.homeSub.textContent = `${session.role === "家長" ? "家長檢視中" : "學生"}・上完課 ${counts.done}/${counts.total}`;
+}
+
+el.homeGoProgress.addEventListener("click", () => setCurrentView("progress"));
+el.homeGoLearning.addEventListener("click", () => {
+  el.learningBlock.classList.remove("collapsed");
+  el.learningBlock.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+// ---------- 我的 ----------
+
+function renderMe() {
+  el.meAvatar.textContent = session.name.slice(0, 1).toUpperCase();
+  el.meName.textContent = session.name;
+  el.meRole.textContent = session.role;
+  el.meVersion.textContent = APP_VERSION;
+  el.meUpdated.textContent = el.statusBarUpdated.textContent.replace("最後更新：", "");
+
+  const isParent = session.role === "家長";
+  el.meStudents.classList.toggle("hidden", !isParent);
+  if (!isParent) return;
+  el.meStudentList.innerHTML = "";
+  allStudents.forEach((s) => {
+    const counts = countProgressFor(s.name);
+    const card = document.createElement("button");
+    card.className = "option-card" + (s.name === currentStudent ? " selected" : "");
+    card.innerHTML = `
+      <span class="option-card-icon">${escapeHtml(s.name.slice(0, 1).toUpperCase())}</span>
+      <span class="option-card-text">
+        <span class="option-card-title">${escapeHtml(s.name)}</span>
+        <span class="option-card-sub">上完課 ${counts.done}/${counts.total}</span>
+      </span>
+    `;
+    card.addEventListener("click", () => {
+      if (s.name === currentStudent) return;
+      selectStudent(s.name);
+      showToast(`已切換為檢視 ${s.name}`, "success");
+    });
+    el.meStudentList.appendChild(card);
+  });
+}
+
+function countProgressFor(student) {
+  const items = allCourses.flatMap(courseItems);
+  const done = items.filter((i) => getItemProgress(i.id, student).status === "上完課").length;
+  return { done, total: items.length };
+}
+
+el.meLogoutBtn.addEventListener("click", () => el.logoutBtn.click());
+
+// ---------- 底部導覽列 ----------
+
+el.bottomNav.addEventListener("click", (e) => {
+  const btn = e.target.closest(".bottom-nav-item");
+  if (!btn) return;
+  setCurrentView(btn.dataset.view);
+  window.scrollTo(0, 0);
+});
+
+function renderManageBadge() {
+  const pending = session.role === "家長" ? allTasks.filter((t) => t.reportStatus === "待審核").length : 0;
+  el.manageBadge.classList.toggle("hidden", pending === 0);
+  el.manageBadge.textContent = pending > 9 ? "9+" : pending;
+}
+
+// ---------- 篩選底部面板（選好按「套用」才生效） ----------
+
+let filterDraft = null;
+
+function openFilterSheet() {
+  filterDraft = { view: progressPrefs.view, courses: [...progressPrefs.courses], statuses: [...progressPrefs.statuses] };
+  renderFilterSheet();
+  el.filterSheetOverlay.classList.remove("hidden");
+  document.body.classList.add("sheet-open");
+}
+
+function closeFilterSheet() {
+  el.filterSheetOverlay.classList.add("hidden");
+  document.body.classList.remove("sheet-open");
+  filterDraft = null;
+}
+
+function renderFilterSheet() {
+  const modes = [
+    { value: "accordion", icon: "accordion", title: "手風琴", sub: "依課程分頁，逐單元登錄" },
+    { value: "board", icon: "board", title: "看板", sub: "各科一欄，快速瀏覽全部進度" },
+  ];
+  el.sheetModeOptions.innerHTML = "";
+  modes.forEach((m) => {
+    const card = document.createElement("button");
+    card.className = "option-card" + (filterDraft.view === m.value ? " selected" : "");
+    card.innerHTML = `
+      <span class="option-card-icon">${iconSvg(m.icon)}</span>
+      <span class="option-card-text">
+        <span class="option-card-title">${m.title}</span>
+        <span class="option-card-sub">${m.sub}</span>
+      </span>
+    `;
+    card.addEventListener("click", () => {
+      filterDraft.view = m.value;
+      renderFilterSheet();
+    });
+    el.sheetModeOptions.appendChild(card);
+  });
+
+  el.sheetBoardFilters.classList.toggle("hidden", filterDraft.view !== "board");
+  renderDraftChips(el.sheetCourseChips, "courses", getCourseList());
+  renderDraftChips(el.sheetStatusChips, "statuses", PROGRESS_STATUSES);
+}
+
+function renderDraftChips(container, key, allValues) {
+  const selected = filterDraft[key].filter((v) => allValues.includes(v));
+  container.innerHTML = "";
+  [{ label: "全部", value: null }].concat(allValues.map((v) => ({ label: v, value: v }))).forEach((c) => {
+    const btn = document.createElement("button");
+    btn.className = "filter-chip" + ((c.value === null ? selected.length === 0 : selected.includes(c.value)) ? " active" : "");
+    btn.textContent = c.label;
+    btn.addEventListener("click", () => {
+      let next;
+      if (c.value === null) next = [];
+      else if (selected.includes(c.value)) next = selected.filter((v) => v !== c.value);
+      else next = [...selected, c.value];
+      if (next.length === allValues.length) next = [];
+      filterDraft[key] = next;
+      renderFilterSheet();
+    });
+    container.appendChild(btn);
+  });
+}
+
+el.filterBtn.addEventListener("click", openFilterSheet);
+el.filterSheetClose.addEventListener("click", closeFilterSheet);
+el.filterSheetOverlay.addEventListener("click", (e) => {
+  if (e.target === el.filterSheetOverlay) closeFilterSheet();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && filterDraft) closeFilterSheet();
+});
+
+el.filterSheetReset.addEventListener("click", () => {
+  filterDraft.courses = [];
+  filterDraft.statuses = [];
+  renderFilterSheet();
+});
+
+el.filterSheetApply.addEventListener("click", () => {
+  progressPrefs = filterDraft;
+  saveProgressPrefs();
+  closeFilterSheet();
+  applyProgressMode();
+  renderProgressBoard();
+  updatePageHeader();
+});
+
+fillIcons();
 applyProgressMode();
 init();
