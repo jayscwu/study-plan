@@ -94,6 +94,7 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents || "{}");
     if (action === "login") return json(handleLogin(body.name, body.pin));
     if (action === "createTask") return json(handleCreateTask(body));
+    if (action === "createTasks") return json(handleCreateTasks(body));
     if (action === "updateTask") return json(handleUpdateTask(body));
     if (action === "deleteTask") return json(handleDeleteTask(body));
     if (action === "reportTask") return json(handleReportTask(body));
@@ -216,6 +217,7 @@ function handleTasks(name, role) {
     status: statusCode(r["狀態"]),
     date: formatTaskDate(r["預計學習日期"], tz),
     timeSlot: r["時段"] || "整天",
+    itemId: r["項次"] ? Number(r["項次"]) : null,
     reportStatus: r["回報狀態"] || "",
     reportTime: r["回報時間"] || "",
     reviewer: r["審核人"] || "",
@@ -241,35 +243,76 @@ function getTaskRow(id) {
   return { sheet, header, row: obj };
 }
 
+// 「學習任務」的「項次」欄：有填代表任務掛在子單元（階層 3），空白代表掛在主單元（階層 2）。
+// 舊的表沒有這欄時自動補上表頭，不用手動加。
+function ensureTaskColumns(sheet) {
+  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  ["時段", "項次"].forEach((name) => {
+    if (header.indexOf(name) === -1) {
+      header.push(name);
+      sheet.getRange(1, header.length).setValue(name);
+    }
+  });
+  return header;
+}
+
 function handleCreateTask(body) {
+  return handleCreateTasks({ creator: body.creator, student: body.student, tasks: [body] });
+}
+
+// 一次新增多筆任務：先全部檢查，全部通過才寫入
+function handleCreateTasks(body) {
   const creator = String(body.creator || "").trim();
   const student = String(body.student || "").trim();
-  const course = String(body.course || "").trim();
-  const unit = String(body.unit || "").trim();
-  const task = String(body.task || "").trim();
-  const timeSlot = String(body.timeSlot || "").trim();
+  const inputs = Array.isArray(body.tasks) ? body.tasks : [];
 
   if (!isParent(creator)) return { ok: false, error: "沒有權限新增任務" };
   if (!isStudent(student)) return { ok: false, error: "找不到這個學生" };
-  if (!course || !unit) return { ok: false, error: "請選擇課程與單元" };
-  if (!findCourseUnit(course, unit)) return { ok: false, error: "找不到這個課程/單元" };
-  if (!task) return { ok: false, error: "請輸入任務名稱" };
-  if (TIME_SLOTS.indexOf(timeSlot) === -1) return { ok: false, error: "時段不合法" };
+  if (inputs.length === 0) return { ok: false, error: "沒有要新增的任務" };
 
-  const sheet = openSheet(TASKS_FILE_ID);
-  const header = sheet.getDataRange().getValues()[0];
-  const rowIndex = sheet.getLastRow() + 1;
+  const tree = getCourseTree();
+  const rows = [];
+  for (let i = 0; i < inputs.length; i++) {
+    const t = inputs[i];
+    const label = inputs.length > 1 ? `第 ${i + 1} 筆：` : "";
+    const course = String(t.course || "").trim();
+    const unit = String(t.unit || "").trim();
+    const task = String(t.task || "").trim();
+    const timeSlot = String(t.timeSlot || "").trim();
+    const itemId = t.itemId ? Number(t.itemId) : null;
 
-  sheet.getRange(rowIndex, taskCol(header, "學生")).setValue(student);
-  sheet.getRange(rowIndex, taskCol(header, "課程名稱")).setValue(course);
-  sheet.getRange(rowIndex, taskCol(header, "單元名稱")).setValue(unit);
-  sheet.getRange(rowIndex, taskCol(header, "任務名稱")).setValue(task);
-  sheet.getRange(rowIndex, taskCol(header, "狀態")).setValue(STATUS_LABELS["0"]);
-  sheet.getRange(rowIndex, taskCol(header, "預計學習日期")).setValue(parseTaskDate(body.date));
-  sheet.getRange(rowIndex, taskCol(header, "時段")).setValue(timeSlot);
-  sheet.getRange(rowIndex, taskCol(header, "建立人")).setValue(creator);
+    if (!course || !unit) return { ok: false, error: label + "請選擇課程與單元" };
+    const c = tree.find((x) => x.name === course);
+    const u = c && c.units.find((x) => x.name === unit);
+    if (!u) return { ok: false, error: label + "找不到這個課程/單元" };
+    if (itemId && !u.items.some((x) => x.id === itemId)) return { ok: false, error: label + "這個子單元不屬於這個單元" };
+    if (!task) return { ok: false, error: label + "請輸入任務名稱" };
+    if (TIME_SLOTS.indexOf(timeSlot) === -1) return { ok: false, error: label + "時段不合法" };
 
-  return { ok: true };
+    rows.push({
+      "學生": student,
+      "課程名稱": course,
+      "單元名稱": unit,
+      "任務名稱": task,
+      "狀態": STATUS_LABELS["0"],
+      "預計學習日期": parseTaskDate(t.date),
+      "時段": timeSlot,
+      "建立人": creator,
+      "項次": itemId || "",
+    });
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const sheet = openSheet(TASKS_FILE_ID);
+    const header = ensureTaskColumns(sheet);
+    const values = rows.map((r) => header.map((h) => (h in r ? r[h] : "")));
+    sheet.getRange(sheet.getLastRow() + 1, 1, values.length, header.length).setValues(values);
+  } finally {
+    lock.releaseLock();
+  }
+  return { ok: true, count: rows.length };
 }
 
 function handleUpdateTask(body) {

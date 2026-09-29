@@ -25,6 +25,7 @@ const Api = {
   getTasks: (name, role) => apiGet("tasks", { name, role }),
   getCourseUnits: () => apiGet("courseUnits", {}),
   createTask: (payload) => apiPost("createTask", payload),
+  createTasks: (payload) => apiPost("createTasks", payload),
   updateTask: (payload) => apiPost("updateTask", payload),
   deleteTask: (payload) => apiPost("deleteTask", payload),
   reportTask: (student, id) => apiPost("reportTask", { student, id }),

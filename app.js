@@ -8,9 +8,11 @@ const STATUS_LABELS = {
 const PROGRESS_STATUSES = ["待學習", "學習中", "上完課"];
 const PROGRESS_STATUS_CODE = { "待學習": "0", "學習中": "1", "上完課": "2" };
 
+const TASK_TIME_SLOTS = ["整天", "上午", "下午", "晚上"];
+
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v3.0";
+const APP_VERSION = "v3.1";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -182,11 +184,11 @@ let allStudents = [];
 let currentStudent = null;
 let selectedLoginUser = null;
 let editingTaskId = null;
-let addingTaskUnit = null;
 let expandedUnits = new Set();
 let expandedProgressUnits = new Set();
 let expandedDashboardCourses = new Set();
 let boardOpenUnits = null;
+let boardTaskOpen = new Set();
 let boardBarPercent = new Map();
 let progressPrefs = loadProgressPrefs();
 let currentCourse = null;
@@ -569,7 +571,11 @@ function saveProgress(itemId, status, date) {
     .then((res) => {
       if (!res.ok) throw new Error(res.error || "儲存失敗");
       progressByKey.set(key, res.progress);
-      showToast(`已儲存：${itemName} → ${status}`, "success");
+      if (session.role === "家長" && status === "上完課" && student === currentStudent) {
+        promptAssignAfterDone(itemId);
+      } else {
+        showToast(`已儲存：${itemName} → ${status}`, "success");
+      }
     })
     .catch((err) => {
       if (prevRow) progressByKey.set(key, prevRow);
@@ -855,9 +861,7 @@ function buildOrphanTaskCard(tasks) {
 
 function buildProgressUnitCard(course, unit, showTasks) {
   const counts = countProgress(unit.items);
-  const tasks = showTasks
-    ? getStudentTasks().filter((t) => t.course === course.name && t.unit === unit.name)
-    : [];
+  const tasks = showTasks ? allUnitTasks(course.name, unit) : [];
 
   const card = document.createElement("section");
   card.className = "subject-card" + (expandedProgressUnits.has(unit.id) ? "" : " collapsed");
@@ -889,23 +893,27 @@ function buildProgressUnitCard(course, unit, showTasks) {
   } else {
     const list = document.createElement("div");
     list.className = "progress-item-list";
-    unit.items.forEach((item) => list.appendChild(buildProgressItemRow(item)));
+    unit.items.forEach((item) => list.appendChild(buildProgressItemRow(item, showTasks)));
     body.appendChild(list);
   }
 
-  if (tasks.length) {
+  const unitTasks = showTasks ? unitLevelTasks(course.name, unit) : [];
+  if (unitTasks.length) {
     const title = document.createElement("div");
     title.className = "progress-tasks-title";
-    title.textContent = "家長交代的任務";
+    title.textContent = "單元任務";
     body.appendChild(title);
-    body.appendChild(buildTaskListSimple(tasks));
+    body.appendChild(buildTaskListSimple(unitTasks));
+  }
+  if (showTasks && session.role === "家長") {
+    body.appendChild(buildAssignLink("＋ 指派單元任務", () => openAssignPanel({ course, unit, itemId: null })));
   }
 
   card.appendChild(body);
   return card;
 }
 
-function buildProgressItemRow(item) {
+function buildProgressItemRow(item, showTasks) {
   const p = getItemProgress(item.id);
   const code = PROGRESS_STATUS_CODE[p.status];
   const saving = savingItems.has(progressKey(currentStudent, item.id));
@@ -922,6 +930,22 @@ function buildProgressItemRow(item) {
     </div>
   `;
   row.appendChild(buildProgressControls(item, p, saving));
+
+  // 子單元的任務和「指派任務」放在這一列下方
+  if (showTasks) {
+    const tasks = itemTasks(item.id);
+    const isParent = session.role === "家長";
+    if (tasks.length || isParent) {
+      const extra = document.createElement("div");
+      extra.className = "progress-item-extra";
+      if (tasks.length) extra.appendChild(buildTaskListSimple(tasks));
+      if (isParent) {
+        const entry = learningItemIndex.get(item.id);
+        extra.appendChild(buildAssignLink("＋ 指派任務", () => openAssignPanel({ course: entry.course, unit: entry.unit, itemId: item.id })));
+      }
+      row.appendChild(extra);
+    }
+  }
   return row;
 }
 
@@ -1226,6 +1250,35 @@ function buildBoardCard(item) {
     openStatusMenu(pill, item, p);
   });
 
+  // 子單元任務：卡片只顯示數量，點了才展開清單
+  const tasks = itemTasks(item.id);
+  const isParent = session.role === "家長";
+  if (tasks.length || isParent) {
+    const bar = document.createElement("div");
+    bar.className = "board-card-tasks";
+    if (tasks.length) {
+      const open = boardTaskOpen.has(item.id);
+      const countBtn = document.createElement("button");
+      countBtn.className = "task-count-btn" + (open ? " open" : "");
+      countBtn.setAttribute("aria-expanded", open);
+      countBtn.innerHTML = `${iconSvg("tasks")}任務 ${tasks.length}`;
+      countBtn.addEventListener("click", () => {
+        if (boardTaskOpen.has(item.id)) boardTaskOpen.delete(item.id);
+        else boardTaskOpen.add(item.id);
+        renderProgressBoard();
+      });
+      bar.appendChild(countBtn);
+    }
+    if (isParent) {
+      const entry = learningItemIndex.get(item.id);
+      const addBtn = buildAssignLink("＋ 任務", () => openAssignPanel({ course: entry.course, unit: entry.unit, itemId: item.id }));
+      addBtn.classList.add("card-assign-btn");
+      bar.appendChild(addBtn);
+    }
+    card.appendChild(bar);
+    if (tasks.length && boardTaskOpen.has(item.id)) card.appendChild(buildTaskListSimple(tasks));
+  }
+
   const dateBtn = card.querySelector(".card-date-btn");
   if (dateBtn) {
     const input = card.querySelector(".card-date-input");
@@ -1329,7 +1382,7 @@ function buildTaskListItem(t, showCourse) {
   item.className = "task-list-item";
   item.innerHTML = `
     <div class="task-list-item-text">
-      ${showCourse ? `<div class="task-list-item-course">${escapeHtml(`${t.course}・${t.unit}`)}</div>` : ""}
+      ${showCourse ? `<div class="task-list-item-course">${escapeHtml(`${t.course}・${taskItemEntry(t) ? taskItemEntry(t).item.name : t.unit}`)}</div>` : ""}
       <div class="task-list-item-chapter">${escapeHtml(t.task)}</div>
       ${t.date ? `<div class="task-list-item-type">${escapeHtml(t.date)}</div>` : ""}
     </div>
@@ -1454,12 +1507,30 @@ function buildManageUnitCard(course, u, tasks) {
   });
   card.appendChild(header);
 
+  // 依「主單元任務」「各子單元」分組
   const body = document.createElement("div");
   body.className = "task-list-mobile";
-  tasks.forEach((t) => body.appendChild(buildManageTaskRow(t)));
+  const groups = [{ title: "主單元任務", tasks: tasks.filter((t) => !taskItemEntry(t)) }].concat(
+    u.items.map((i) => ({ title: i.name, tasks: tasks.filter((t) => t.itemId === i.id && taskItemEntry(t)) }))
+  ).filter((g) => g.tasks.length);
+  const showTitles = groups.length > 1 || (groups[0] && groups[0].title !== "主單元任務");
+  groups.forEach((g) => {
+    if (showTitles) {
+      const title = document.createElement("div");
+      title.className = "task-group-title";
+      title.textContent = g.title;
+      body.appendChild(title);
+    }
+    g.tasks.forEach((t) => body.appendChild(buildManageTaskRow(t)));
+  });
   card.appendChild(body);
 
-  card.appendChild(buildAddTaskControl(course, u.name, key));
+  card.appendChild(
+    buildAssignLink("＋ 指派任務", () => {
+      expandedUnits.add(key);
+      openAssignPanel({ course: getCourse(course), unit: u, itemId: null });
+    })
+  );
 
   return card;
 }
@@ -1593,75 +1664,6 @@ function buildManageTaskRow(t) {
   );
 
   return row;
-}
-
-function buildAddTaskControl(course, unit, key) {
-  const wrap = document.createElement("div");
-
-  if (addingTaskUnit !== key) {
-    const link = document.createElement("button");
-    link.className = "inline-add-link";
-    link.textContent = "+ 新增此單元任務";
-    link.addEventListener("click", () => {
-      addingTaskUnit = key;
-      expandedUnits.add(key);
-      renderManageTasksList();
-    });
-    wrap.appendChild(link);
-    return wrap;
-  }
-
-  wrap.className = "request-form";
-  wrap.innerHTML = `
-    <input type="text" class="student-select add-task-name" placeholder="任務名稱（如：練習本、練習卷）">
-    <input type="date" class="student-select add-task-date">
-    <select class="student-select add-task-slot">
-      <option value="整天">整天</option>
-      <option value="上午">上午</option>
-      <option value="下午">下午</option>
-      <option value="晚上">晚上</option>
-    </select>
-    <button class="primary-btn" data-action="save">新增</button>
-    <button class="secondary-btn" data-action="cancel">取消</button>
-  `;
-  const saveBtn = wrap.querySelector('[data-action="save"]');
-  wrap.querySelector('[data-action="cancel"]').addEventListener("click", () => {
-    addingTaskUnit = null;
-    renderManageTasksList();
-  });
-  saveBtn.addEventListener("click", () => {
-    const task = wrap.querySelector(".add-task-name").value.trim();
-    if (!task) return;
-    saveBtn.disabled = true;
-    saveBtn.textContent = "新增中...";
-    Api.createTask({
-      creator: session.name,
-      student: currentStudent,
-      course,
-      unit,
-      task,
-      date: wrap.querySelector(".add-task-date").value,
-      timeSlot: wrap.querySelector(".add-task-slot").value,
-    })
-      .then((res) => {
-        if (!res.ok) {
-          showToast(res.error || "新增失敗", "error");
-          saveBtn.disabled = false;
-          saveBtn.textContent = "新增";
-          return;
-        }
-        addingTaskUnit = null;
-        showToast(`已新增：${task}`, "success");
-        loadData(true);
-      })
-      .catch((err) => {
-        showToast(`新增失敗（${err.message}）`, "error");
-        saveBtn.disabled = false;
-        saveBtn.textContent = "新增";
-      });
-  });
-
-  return wrap;
 }
 
 // ---------- 「⋮」選單 ----------
@@ -2035,6 +2037,298 @@ el.filterSheetApply.addEventListener("click", () => {
   applyProgressMode();
   renderProgressBoard();
   updatePageHeader();
+});
+
+// ---------- 學習任務：掛在主單元或子單元 ----------
+
+// 任務的「項次」有值且對得到同一個單元底下的子單元，就是子單元任務；其他都算主單元任務
+function taskItemEntry(t) {
+  const entry = t.itemId ? learningItemIndex.get(t.itemId) : null;
+  return entry && entry.course.name === t.course && entry.unit.name === t.unit ? entry : null;
+}
+
+function unitLevelTasks(courseName, unit) {
+  return getStudentTasks().filter((t) => t.course === courseName && t.unit === unit.name && !taskItemEntry(t));
+}
+
+function itemTasks(itemId) {
+  return getStudentTasks().filter((t) => t.itemId === itemId && taskItemEntry(t));
+}
+
+function allUnitTasks(courseName, unit) {
+  return getStudentTasks().filter((t) => t.course === courseName && t.unit === unit.name);
+}
+
+function buildAssignLink(label, onClick) {
+  const btn = document.createElement("button");
+  btn.className = "inline-add-link";
+  btn.textContent = label;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return btn;
+}
+
+// ---------- 可以帶按鈕的提示條 ----------
+
+function showActionToast(message, actionLabel, onAction) {
+  const toast = document.createElement("div");
+  toast.className = "toast toast-success toast-action";
+  toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+  const btn = document.createElement("button");
+  btn.className = "toast-action-btn";
+  btn.textContent = actionLabel;
+  const dismiss = () => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  };
+  btn.addEventListener("click", () => {
+    dismiss();
+    onAction();
+  });
+  toast.appendChild(btn);
+  el.toastContainer.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("show"));
+  setTimeout(dismiss, 6000);
+}
+
+// 家長把子單元改成上完課後，提示可以接著指派任務；主單元全部上完時改成提示指派單元任務
+function promptAssignAfterDone(itemId) {
+  const entry = learningItemIndex.get(itemId);
+  if (!entry) return;
+  const counts = countProgress(entry.unit.items);
+  if (counts.total > 1 && counts.done === counts.total) {
+    showActionToast(`${entry.unit.name} 已全部上完`, "指派單元任務", () =>
+      openAssignPanel({ course: entry.course, unit: entry.unit, itemId, target: "unit" })
+    );
+  } else {
+    showActionToast(`已上完課：${entry.item.name}`, "指派任務", () =>
+      openAssignPanel({ course: entry.course, unit: entry.unit, itemId })
+    );
+  }
+}
+
+// ---------- 指派任務面板 ----------
+
+const assignOverlay = document.createElement("div");
+assignOverlay.className = "sheet-overlay hidden";
+assignOverlay.innerHTML = `
+  <div class="sheet assign-sheet" role="dialog" aria-modal="true" aria-labelledby="assign-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="assign-title" class="sheet-title">指派任務</h2>
+      <button class="sheet-close" data-action="close" aria-label="關閉">${iconSvg("x")}</button>
+    </div>
+    <p class="assign-context"></p>
+    <p class="sheet-label">指派對象</p>
+    <div class="option-list assign-targets"></div>
+    <p class="sheet-label">任務</p>
+    <div class="assign-rows"></div>
+    <button class="inline-add-link assign-add-row">＋ 再加一筆</button>
+    <p class="login-error assign-error hidden"></p>
+    <div class="sheet-footer">
+      <button class="outline-btn" data-action="close">取消</button>
+      <button class="solid-btn assign-submit"></button>
+    </div>
+  </div>
+`;
+document.body.appendChild(assignOverlay);
+
+const assignEl = {
+  context: assignOverlay.querySelector(".assign-context"),
+  targets: assignOverlay.querySelector(".assign-targets"),
+  rows: assignOverlay.querySelector(".assign-rows"),
+  addRow: assignOverlay.querySelector(".assign-add-row"),
+  error: assignOverlay.querySelector(".assign-error"),
+  submit: assignOverlay.querySelector(".assign-submit"),
+};
+
+let assignCtx = null;
+
+function addDays(key, n) {
+  const [y, m, d] = key.split("-").map(Number);
+  const date = new Date(y, m - 1, d + n);
+  return dateKey(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+// itemId：相關的子單元（預設選它、日期以它的上完課日期為準）；target 沒指定時，有 itemId 就指派到子單元
+function openAssignPanel({ course, unit, itemId, target }) {
+  const doneDate = itemId ? getItemProgress(itemId).doneDate : null;
+  assignCtx = {
+    course,
+    unit,
+    student: currentStudent,
+    target: target || (itemId ? "item" : "unit"),
+    itemId: itemId || (unit.items[0] && unit.items[0].id) || null,
+    // 預設日期：上完課日期的隔天，沒有的話就是明天
+    defaultDate: addDays(doneDate || todayKey(), 1),
+    rows: [],
+    submitting: false,
+  };
+  assignCtx.rows.push(newAssignRow());
+  assignEl.error.classList.add("hidden");
+  renderAssignPanel();
+  assignOverlay.classList.remove("hidden");
+  document.body.classList.add("sheet-open");
+  const firstInput = assignEl.rows.querySelector("input");
+  if (firstInput) firstInput.focus();
+}
+
+function closeAssignPanel() {
+  assignOverlay.classList.add("hidden");
+  document.body.classList.remove("sheet-open");
+  assignCtx = null;
+}
+
+function newAssignRow() {
+  return { task: "", date: assignCtx.defaultDate, timeSlot: "整天" };
+}
+
+function renderAssignPanel() {
+  const { course, unit } = assignCtx;
+  assignEl.context.textContent = `${assignCtx.student}・${course.name}・${unit.name}`;
+
+  // 指派對象：主單元，或單元底下的某個子單元
+  assignEl.targets.innerHTML = "";
+  const unitCard = document.createElement("button");
+  unitCard.className = "option-card" + (assignCtx.target === "unit" ? " selected" : "");
+  const unitCounts = countProgress(unit.items);
+  unitCard.innerHTML = `
+    <span class="option-card-icon">${iconSvg("book")}</span>
+    <span class="option-card-text">
+      <span class="option-card-title">主單元</span>
+      <span class="option-card-sub">${escapeHtml(unit.name)}・上完課 ${unitCounts.done}/${unitCounts.total}</span>
+    </span>
+  `;
+  unitCard.addEventListener("click", () => {
+    assignCtx.target = "unit";
+    renderAssignPanel();
+  });
+  assignEl.targets.appendChild(unitCard);
+
+  if (unit.items.length) {
+    const itemCard = document.createElement("div");
+    itemCard.className = "option-card" + (assignCtx.target === "item" ? " selected" : "");
+    itemCard.setAttribute("role", "button");
+    itemCard.innerHTML = `
+      <span class="option-card-icon">${iconSvg("progress")}</span>
+      <span class="option-card-text assign-item-pick">
+        <span class="option-card-title">子單元</span>
+        <select class="student-select assign-item-select" aria-label="選擇子單元">
+          ${unit.items
+            .map((i) => {
+              const p = getItemProgress(i.id);
+              const suffix = p.status === "上完課" && p.doneDate ? `（${shortMonthDay(p.doneDate)} 上完課）` : `（${p.status}）`;
+              return `<option value="${i.id}"${i.id === assignCtx.itemId ? " selected" : ""}>${escapeHtml(i.name + suffix)}</option>`;
+            })
+            .join("")}
+        </select>
+      </span>
+    `;
+    itemCard.addEventListener("click", (e) => {
+      if (e.target.closest("select") || assignCtx.target === "item") return;
+      assignCtx.target = "item";
+      renderAssignPanel();
+    });
+    const select = itemCard.querySelector("select");
+    select.addEventListener("change", () => {
+      assignCtx.itemId = Number(select.value);
+      assignCtx.target = "item";
+      renderAssignPanel();
+    });
+    assignEl.targets.appendChild(itemCard);
+  }
+
+  // 任務清單：每筆可改名稱、日期、時段
+  assignEl.rows.innerHTML = "";
+  assignCtx.rows.forEach((row, index) => {
+    const card = document.createElement("div");
+    card.className = "assign-row";
+    card.innerHTML = `
+      <div class="assign-row-head">
+        <span class="assign-row-no">第 ${index + 1} 筆</span>
+        ${assignCtx.rows.length > 1 ? `<button class="assign-row-remove" aria-label="刪除這一筆">${iconSvg("x")}</button>` : ""}
+      </div>
+      <input type="text" class="student-select assign-task" placeholder="任務名稱，例如：複習、小考、寫習作" value="${escapeHtml(row.task)}">
+      <div class="assign-row-fields">
+        <input type="date" class="student-select assign-date" value="${escapeHtml(row.date)}" aria-label="預計日期">
+        <select class="student-select assign-slot" aria-label="時段">
+          ${TASK_TIME_SLOTS.map((s) => `<option value="${s}"${s === row.timeSlot ? " selected" : ""}>${s}</option>`).join("")}
+        </select>
+      </div>
+    `;
+    card.querySelector(".assign-task").addEventListener("input", (e) => (row.task = e.target.value));
+    card.querySelector(".assign-date").addEventListener("change", (e) => (row.date = e.target.value));
+    card.querySelector(".assign-slot").addEventListener("change", (e) => (row.timeSlot = e.target.value));
+    const remove = card.querySelector(".assign-row-remove");
+    if (remove) {
+      remove.addEventListener("click", () => {
+        assignCtx.rows.splice(index, 1);
+        renderAssignPanel();
+      });
+    }
+    assignEl.rows.appendChild(card);
+  });
+
+  assignEl.submit.disabled = assignCtx.submitting;
+  assignEl.submit.textContent = assignCtx.submitting ? "指派中..." : `指派（${assignCtx.rows.length} 筆）`;
+}
+
+assignEl.addRow.addEventListener("click", () => {
+  assignCtx.rows.push(newAssignRow());
+  renderAssignPanel();
+  const inputs = assignEl.rows.querySelectorAll(".assign-task");
+  inputs[inputs.length - 1].focus();
+});
+
+assignOverlay.addEventListener("click", (e) => {
+  if (e.target === assignOverlay || e.target.closest('[data-action="close"]')) closeAssignPanel();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && assignCtx && !assignCtx.submitting) closeAssignPanel();
+});
+
+assignEl.submit.addEventListener("click", () => {
+  const ctx = assignCtx;
+  const emptyIndex = ctx.rows.findIndex((r) => !r.task.trim());
+  if (emptyIndex !== -1) {
+    assignEl.error.textContent = `請輸入第 ${emptyIndex + 1} 筆的任務名稱`;
+    assignEl.error.classList.remove("hidden");
+    return;
+  }
+  assignEl.error.classList.add("hidden");
+  ctx.submitting = true;
+  renderAssignPanel();
+
+  const itemId = ctx.target === "item" ? ctx.itemId : null;
+  Api.createTasks({
+    creator: session.name,
+    student: ctx.student,
+    tasks: ctx.rows.map((r) => ({
+      course: ctx.course.name,
+      unit: ctx.unit.name,
+      itemId,
+      task: r.task.trim(),
+      date: r.date,
+      timeSlot: r.timeSlot,
+    })),
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(res.error || "指派失敗");
+      closeAssignPanel();
+      const target = itemId ? learningItemIndex.get(itemId).item.name : ctx.unit.name;
+      showToast(`已指派 ${ctx.rows.length} 筆任務到 ${target}`, "success");
+      loadData(true);
+    })
+    .catch((err) => {
+      if (assignCtx !== ctx) return;
+      ctx.submitting = false;
+      renderAssignPanel();
+      assignEl.error.textContent = `指派失敗（${err.message}）`;
+      assignEl.error.classList.remove("hidden");
+    });
 });
 
 fillIcons();

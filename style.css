@@ -2414,3 +2414,206 @@ body.sheet-open {
     color: var(--color-accent);
   }
 }
+
+/* 子單元任務：放在學習項目那一列下方 */
+
+.progress-item-extra {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.progress-item-extra .task-list-mobile {
+  align-self: stretch;
+  margin-top: 4px;
+  gap: 6px;
+}
+
+.progress-item-extra .task-list-item,
+.board-card .task-list-item {
+  padding: 7px 10px;
+}
+
+.task-group-title {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* 看板卡片：任務數量與指派按鈕 */
+
+.board-card-tasks {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.task-count-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+  padding: 1px 9px;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.task-count-btn .ic {
+  width: 13px;
+  height: 13px;
+}
+
+.task-count-btn.open {
+  background: var(--color-card-head);
+}
+
+.card-assign-btn {
+  margin-left: auto;
+  padding: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.board-card .task-list-mobile {
+  margin-top: 6px;
+  gap: 5px;
+}
+
+.board-card .task-list-item-chapter {
+  font-size: 0.8rem;
+}
+
+/* 提示條上的按鈕 */
+
+.toast-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
+  padding-right: 8px;
+}
+
+.toast-action-btn {
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #15803d;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* 指派任務面板 */
+
+.assign-context {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.assign-item-pick {
+  flex: 1;
+  gap: 4px;
+}
+
+.assign-item-select {
+  width: 100%;
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.assign-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assign-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+
+.assign-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.assign-row-no {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.assign-row-remove {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  padding: 2px;
+  cursor: pointer;
+}
+
+.assign-row .student-select {
+  width: 100%;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 0.95rem;
+}
+
+.assign-row-fields {
+  display: grid;
+  grid-template-columns: 1fr 100px;
+  gap: 8px;
+}
+
+.assign-add-row {
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+/* 電腦版：底部面板改成置中視窗 */
+
+@media (min-width: 641px) {
+  .sheet-overlay {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .sheet {
+    max-width: 560px;
+    border-radius: 20px;
+    padding-bottom: 20px;
+  }
+
+  .sheet-handle {
+    display: none;
+  }
+}
+
+.sheet-close .ic {
+  width: 24px;
+  height: 24px;
+}
+
+.assign-row-remove .ic {
+  width: 18px;
+  height: 18px;
+}
