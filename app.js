@@ -12,7 +12,7 @@ const TASK_TIME_SLOTS = ["整天", "上午", "下午", "晚上"];
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v3.3";
+const APP_VERSION = "v3.4";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -184,6 +184,7 @@ let modalCategory = "";
 let learningItemIndex = new Map();
 let progressByKey = new Map();
 let savingItems = new Set();
+let savingTasks = new Set();
 // 存檔超過 5 秒還沒回應的項目，畫面改顯示「雲端回應較慢」
 let slowSavingItems = new Set();
 const SLOW_SAVE_MS = 5000;
@@ -1388,7 +1389,7 @@ window.addEventListener("resize", closeStatusMenu);
 
 function reportActionHtml(t) {
   if (session.role !== "學生") {
-    return t.reportStatus ? reviewStatusBadge(t.reportStatus) : "";
+    return t.reportStatus && t.status !== "2" ? reviewStatusBadge(t.reportStatus) : "";
   }
   if (t.status === "2") return "";
   if (t.reportStatus === "待審核") {
@@ -1398,9 +1399,69 @@ function reportActionHtml(t) {
   return `<button class="report-btn" data-id="${t.id}">${escapeHtml(label)}</button>`;
 }
 
+// ---------- 家長直接標記任務完成／復原 ----------
+
+function buildTaskDoneControl(t) {
+  const wrap = document.createElement("span");
+  wrap.className = "task-done-control";
+  if (savingTasks.has(t.id)) {
+    wrap.innerHTML = `<span class="spinner-sm" aria-label="儲存中"></span>`;
+    return wrap;
+  }
+  const btn = document.createElement("button");
+  if (t.status === "2") {
+    btn.className = "task-undo-btn";
+    btn.textContent = "復原";
+    btn.addEventListener("click", () => {
+      if (confirm(`確定要把「${t.task}」改回未完成嗎？`)) setTaskDone(t, false);
+    });
+  } else {
+    btn.className = "task-done-btn";
+    btn.textContent = "✓ 標記完成";
+    btn.addEventListener("click", () => setTaskDone(t, true));
+  }
+  wrap.appendChild(btn);
+  return wrap;
+}
+
+function refreshTaskViews() {
+  renderReviewBanner();
+  renderOverview(getStudentTasks());
+  renderProgressUnits();
+  renderProgressBoard();
+  renderManageTasksList();
+  renderManageBadge();
+}
+
+function setTaskDone(t, done) {
+  const prev = { status: t.status, reportStatus: t.reportStatus };
+  // 先更新畫面，存檔失敗再還原
+  t.status = done ? "2" : "0";
+  t.reportStatus = done ? (prev.reportStatus === "待審核" ? "已核准" : "家長標記完成") : "";
+  savingTasks.add(t.id);
+  refreshTaskViews();
+
+  Api.setTaskDone({ editor: session.name, id: t.id, done })
+    .then((res) => {
+      if (!res.ok) throw new Error(res.error || "儲存失敗");
+      t.status = res.status;
+      t.reportStatus = res.reportStatus;
+      showToast(done ? `已標記完成：${t.task}` : `已改回未完成：${t.task}`, "success");
+    })
+    .catch((err) => {
+      t.status = prev.status;
+      t.reportStatus = prev.reportStatus;
+      showToast(`儲存失敗（${err.message}）`, "error");
+    })
+    .finally(() => {
+      savingTasks.delete(t.id);
+      refreshTaskViews();
+    });
+}
+
 function buildTaskListItem(t, showCourse) {
   const item = document.createElement("div");
-  item.className = "task-list-item";
+  item.className = "task-list-item" + (t.status === "2" ? " done" : "") + (savingTasks.has(t.id) ? " saving" : "");
   item.innerHTML = `
     <div class="task-list-item-text">
       ${showCourse ? `<div class="task-list-item-course">${escapeHtml(`${t.course}・${taskItemEntry(t) ? taskItemEntry(t).item.name : t.unit}`)}</div>` : ""}
@@ -1413,6 +1474,7 @@ function buildTaskListItem(t, showCourse) {
       ${reportActionHtml(t)}
     </div>
   `;
+  if (session.role === "家長") item.querySelector(".task-list-item-actions").appendChild(buildTaskDoneControl(t));
   const reportBtn = item.querySelector(".report-btn");
   if (reportBtn) {
     reportBtn.addEventListener("click", () => {
@@ -1622,6 +1684,8 @@ function buildManageTaskRow(t) {
     return row;
   }
 
+  row.classList.toggle("done", t.status === "2");
+  row.classList.toggle("saving", savingTasks.has(t.id));
   row.innerHTML = `
     <div class="task-list-item-text">
       <div class="task-list-item-type">${categoryBadge(t.category)}${escapeHtml(t.task)}</div>
@@ -1659,6 +1723,8 @@ function buildManageTaskRow(t) {
   });
 
   const actionsWrap = row.querySelector(".request-item-actions");
+  // 待審核時用「核准」就好，其他情況顯示「標記完成／復原」
+  if (t.reportStatus !== "待審核" || savingTasks.has(t.id)) actionsWrap.appendChild(buildTaskDoneControl(t));
   actionsWrap.appendChild(
     buildKebab([
       {

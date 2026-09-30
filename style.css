@@ -2830,3 +2830,54 @@ body.sheet-open {
   opacity: 0.6;
   pointer-events: none;
 }
+
+/* 家長標記任務完成／復原 */
+
+.task-done-control {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+}
+
+.task-done-btn {
+  border: 1px solid var(--color-done-text);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-done-text);
+  padding: 3px 11px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.task-done-btn:hover {
+  background: var(--color-done-bg);
+}
+
+.task-undo-btn {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 0.76rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* 已完成的任務：變淡、名稱加刪除線 */
+
+.task-list-item.done {
+  opacity: 0.62;
+}
+
+.task-list-item.done .task-list-item-chapter,
+.task-list-item.done .task-list-item-type:first-child {
+  text-decoration: line-through;
+}
+
+.task-list-item.saving {
+  pointer-events: none;
+}

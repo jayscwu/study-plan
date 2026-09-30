@@ -125,6 +125,7 @@ function doPost(e) {
     if (action === "deleteTask") return json(handleDeleteTask(body));
     if (action === "reportTask") return json(handleReportTask(body));
     if (action === "reviewTask") return json(handleReviewTask(body));
+    if (action === "setTaskDone") return json(handleSetTaskDone(body));
     if (action === "setProgress") return json(handleSetProgress(body));
     if (action === "saveCategories") return json(handleSaveCategories(body));
     return json({ ok: false, error: "未知的 action" });
@@ -435,6 +436,42 @@ function handleReviewTask(body) {
   sheet.getRange(row.rowIndex, taskCol(header, "審核時間")).setValue(new Date());
 
   return { ok: true };
+}
+
+// 家長直接標記任務完成或復原成未完成。
+// 學生已回報、等待審核時標記完成，就等同核准。
+function handleSetTaskDone(body) {
+  const editor = String(body.editor || "").trim();
+  if (!isParent(editor)) return { ok: false, error: "沒有權限變更任務狀態" };
+  const done = body.done === true;
+
+  const found = getTaskRow(body.id);
+  if (!found) return { ok: false, error: "找不到這個任務" };
+  const { sheet, header, row } = found;
+
+  const values = header.map((h) => row[h]);
+  const set = (name, value) => {
+    const idx = header.indexOf(name);
+    if (idx !== -1) values[idx] = value;
+  };
+
+  let reportStatus = "";
+  if (done) {
+    reportStatus = String(row["回報狀態"]).trim() === "待審核" ? "已核准" : "家長標記完成";
+    set("狀態", STATUS_LABELS["2"]);
+    set("回報狀態", reportStatus);
+    set("審核人", editor);
+    set("審核時間", new Date());
+  } else {
+    set("狀態", STATUS_LABELS["0"]);
+    set("回報狀態", "");
+    set("回報時間", "");
+    set("審核人", "");
+    set("審核時間", "");
+  }
+  sheet.getRange(row.rowIndex, 1, 1, header.length).setValues([values]);
+
+  return { ok: true, status: done ? "2" : "0", reportStatus };
 }
 
 // ---------- 上課進度 ----------

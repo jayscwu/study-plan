@@ -30,6 +30,7 @@ const Api = {
   deleteTask: (payload) => apiPost("deleteTask", payload),
   reportTask: (student, id) => apiPost("reportTask", { student, id }),
   reviewTask: (id, decision, reviewer) => apiPost("reviewTask", { id, decision, reviewer }),
+  setTaskDone: (payload) => apiPost("setTaskDone", payload),
   getProgress: (name, role) => apiGet("progress", { name, role }),
   setProgress: (payload) => apiPost("setProgress", payload),
   getCategories: () => apiGet("categories", {}),
