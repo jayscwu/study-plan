@@ -29,6 +29,31 @@ const TIME_SLOTS = ["整天", "上午", "下午", "晚上"];
 
 const PROGRESS_STATUSES = ["待學習", "學習中", "上完課"];
 
+// 「登入帳號」「課程單元」很少變動，讀過就快取 5 分鐘，省下每次打開試算表的時間。
+// 在試算表改了這兩份資料後，最多 5 分鐘才會反映到網頁上。
+const CACHE_SECONDS = 300;
+
+// 同一次請求內的暫存，避免同一份資料讀兩次
+const requestMemo = {};
+
+function cachedJson(key, loader) {
+  if (key in requestMemo) return requestMemo[key];
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get(key);
+  if (hit) {
+    requestMemo[key] = JSON.parse(hit);
+    return requestMemo[key];
+  }
+  const value = loader();
+  try {
+    cache.put(key, JSON.stringify(value), CACHE_SECONDS);
+  } catch (err) {
+    // 超過快取大小上限就不快取，照常回傳
+  }
+  requestMemo[key] = value;
+  return value;
+}
+
 function statusCode(fullLabel) {
   const match = /^(\d)/.exec(String(fullLabel || "").trim());
   return match ? match[1] : "0";
@@ -109,7 +134,7 @@ function doPost(e) {
 // ---------- 帳號 ----------
 
 function getAccountRows() {
-  return sheetRows(openSheet(ACCOUNTS_FILE_ID));
+  return cachedJson("accounts", () => sheetRows(openSheet(ACCOUNTS_FILE_ID)));
 }
 
 function findAccount(name) {
@@ -152,6 +177,10 @@ function handleLogin(name, pin) {
 // 項次是固定編號（上課進度用它對應學習項目），畫面順序依列的位置。
 
 function getCourseTree() {
+  return cachedJson("courseTree", readCourseTree);
+}
+
+function readCourseTree() {
   const rows = sheetRows(openSheet(COURSE_UNITS_FILE_ID));
   const courses = [];
   let course = null;
@@ -303,7 +332,7 @@ function handleCreateTasks(body) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(30000);
   try {
     const sheet = openSheet(TASKS_FILE_ID);
     const header = ensureTaskColumns(sheet);
@@ -453,7 +482,7 @@ function handleSetProgress(body) {
   }
 
   const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(30000);
   try {
     const sheet = openSheet(PROGRESS_FILE_ID);
     const header = sheet.getDataRange().getValues()[0];

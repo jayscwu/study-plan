@@ -12,7 +12,7 @@ const TASK_TIME_SLOTS = ["整天", "上午", "下午", "晚上"];
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v3.1";
+const APP_VERSION = "v3.2";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -180,6 +180,9 @@ let allCourses = [];
 let learningItemIndex = new Map();
 let progressByKey = new Map();
 let savingItems = new Set();
+// 存檔超過 5 秒還沒回應的項目，畫面改顯示「雲端回應較慢」
+let slowSavingItems = new Set();
+const SLOW_SAVE_MS = 5000;
 let allStudents = [];
 let currentStudent = null;
 let selectedLoginUser = null;
@@ -566,6 +569,11 @@ function saveProgress(itemId, status, date) {
   progressByKey.set(key, applyProgressChange(prev, status, date));
   savingItems.add(key);
   renderProgressViews();
+  const slowTimer = setTimeout(() => {
+    if (!savingItems.has(key)) return;
+    slowSavingItems.add(key);
+    renderProgressViews();
+  }, SLOW_SAVE_MS);
 
   Api.setProgress({ editor: session.name, student, itemId, status, date })
     .then((res) => {
@@ -583,7 +591,9 @@ function saveProgress(itemId, status, date) {
       showToast(`儲存失敗（${err.message}）`, "error");
     })
     .finally(() => {
+      clearTimeout(slowTimer);
       savingItems.delete(key);
+      slowSavingItems.delete(key);
       renderProgressViews();
     });
 }
@@ -913,13 +923,17 @@ function buildProgressUnitCard(course, unit, showTasks) {
   return card;
 }
 
+function savingLabel(itemId) {
+  return slowSavingItems.has(progressKey(currentStudent, itemId)) ? "儲存中，雲端回應較慢，請稍候..." : "儲存中...";
+}
+
 function buildProgressItemRow(item, showTasks) {
   const p = getItemProgress(item.id);
   const code = PROGRESS_STATUS_CODE[p.status];
   const saving = savingItems.has(progressKey(currentStudent, item.id));
   const meta = [];
   if (p.status === "上完課" && p.startDate && p.startDate !== p.doneDate) meta.push(`${p.startDate} 開始`);
-  if (saving) meta.push("儲存中...");
+  if (saving) meta.push(savingLabel(item.id));
 
   const row = document.createElement("div");
   row.className = `progress-item status-${code}` + (saving ? " saving" : "");
@@ -1232,7 +1246,7 @@ function buildBoardCard(item) {
     <div class="board-card-name">${escapeHtml(item.name)}</div>
     <div class="board-card-foot">
       <button class="status-pill status-${code}" aria-haspopup="menu">${escapeHtml(p.status)} ▾</button>
-      ${saving ? `<span class="spinner-sm" aria-label="儲存中"></span>` : ""}
+      ${saving ? `<span class="spinner-sm" aria-label="儲存中"></span>${slowSavingItems.has(progressKey(currentStudent, item.id)) ? `<span class="slow-save">雲端回應較慢，請稍候</span>` : ""}` : ""}
       ${
         !saving && p.status !== "待學習"
           ? `<span class="card-date">

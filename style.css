@@ -2617,3 +2617,10 @@ body.sheet-open {
   width: 18px;
   height: 18px;
 }
+
+/* 看板卡片：存檔較慢的提示 */
+
+.slow-save {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
