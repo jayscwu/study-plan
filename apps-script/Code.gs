@@ -107,6 +107,7 @@ function doGet(e) {
     if (action === "tasks") return json(handleTasks(e.parameter.name, e.parameter.role));
     if (action === "courseUnits") return json(handleCourseUnits());
     if (action === "progress") return json(handleProgress(e.parameter.name, e.parameter.role));
+    if (action === "categories") return json(handleCategories());
     return json({ ok: false, error: "未知的 action" });
   } catch (err) {
     return json({ ok: false, error: String(err) });
@@ -125,6 +126,7 @@ function doPost(e) {
     if (action === "reportTask") return json(handleReportTask(body));
     if (action === "reviewTask") return json(handleReviewTask(body));
     if (action === "setProgress") return json(handleSetProgress(body));
+    if (action === "saveCategories") return json(handleSaveCategories(body));
     return json({ ok: false, error: "未知的 action" });
   } catch (err) {
     return json({ ok: false, error: String(err) });
@@ -247,6 +249,7 @@ function handleTasks(name, role) {
     date: formatTaskDate(r["預計學習日期"], tz),
     timeSlot: r["時段"] || "整天",
     itemId: r["項次"] ? Number(r["項次"]) : null,
+    category: String(r["任務類別"] || "").trim(),
     reportStatus: r["回報狀態"] || "",
     reportTime: r["回報時間"] || "",
     reviewer: r["審核人"] || "",
@@ -276,7 +279,7 @@ function getTaskRow(id) {
 // 舊的表沒有這欄時自動補上表頭，不用手動加。
 function ensureTaskColumns(sheet) {
   const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  ["時段", "項次"].forEach((name) => {
+  ["時段", "項次", "任務類別"].forEach((name) => {
     if (header.indexOf(name) === -1) {
       header.push(name);
       sheet.getRange(1, header.length).setValue(name);
@@ -300,6 +303,7 @@ function handleCreateTasks(body) {
   if (inputs.length === 0) return { ok: false, error: "沒有要新增的任務" };
 
   const tree = getCourseTree();
+  const categoryNames = getCategories().map((c) => c.name);
   const rows = [];
   for (let i = 0; i < inputs.length; i++) {
     const t = inputs[i];
@@ -309,6 +313,7 @@ function handleCreateTasks(body) {
     const task = String(t.task || "").trim();
     const timeSlot = String(t.timeSlot || "").trim();
     const itemId = t.itemId ? Number(t.itemId) : null;
+    const category = String(t.category || "").trim();
 
     if (!course || !unit) return { ok: false, error: label + "請選擇課程與單元" };
     const c = tree.find((x) => x.name === course);
@@ -317,6 +322,7 @@ function handleCreateTasks(body) {
     if (itemId && !u.items.some((x) => x.id === itemId)) return { ok: false, error: label + "這個子單元不屬於這個單元" };
     if (!task) return { ok: false, error: label + "請輸入任務名稱" };
     if (TIME_SLOTS.indexOf(timeSlot) === -1) return { ok: false, error: label + "時段不合法" };
+    if (category && categoryNames.indexOf(category) === -1) return { ok: false, error: label + "找不到這個任務類別" };
 
     rows.push({
       "學生": student,
@@ -328,6 +334,7 @@ function handleCreateTasks(body) {
       "時段": timeSlot,
       "建立人": creator,
       "項次": itemId || "",
+      "任務類別": category,
     });
   }
 
@@ -356,19 +363,23 @@ function handleUpdateTask(body) {
   const unit = String(body.unit || "").trim();
   const task = String(body.task || "").trim();
   const timeSlot = String(body.timeSlot || "").trim();
+  const category = String(body.category || "").trim();
 
   if (!isStudent(student)) return { ok: false, error: "找不到這個學生" };
   if (!course || !unit || !findCourseUnit(course, unit)) return { ok: false, error: "找不到這個課程/單元" };
   if (!task) return { ok: false, error: "請輸入任務名稱" };
   if (TIME_SLOTS.indexOf(timeSlot) === -1) return { ok: false, error: "時段不合法" };
+  if (category && getCategories().every((c) => c.name !== category)) return { ok: false, error: "找不到這個任務類別" };
 
-  const { sheet, header, row } = found;
+  const { sheet, row } = found;
+  const header = ensureTaskColumns(sheet);
   sheet.getRange(row.rowIndex, taskCol(header, "學生")).setValue(student);
   sheet.getRange(row.rowIndex, taskCol(header, "課程名稱")).setValue(course);
   sheet.getRange(row.rowIndex, taskCol(header, "單元名稱")).setValue(unit);
   sheet.getRange(row.rowIndex, taskCol(header, "任務名稱")).setValue(task);
   sheet.getRange(row.rowIndex, taskCol(header, "預計學習日期")).setValue(parseTaskDate(body.date));
   sheet.getRange(row.rowIndex, taskCol(header, "時段")).setValue(timeSlot);
+  sheet.getRange(row.rowIndex, taskCol(header, "任務類別")).setValue(category);
 
   return { ok: true };
 }
@@ -522,6 +533,115 @@ function handleSetProgress(body) {
       ok: true,
       progress: { student, itemId, status, startDate, doneDate, updatedBy: editor, updatedTime },
     };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------- 任務類別 ----------
+//
+// 放在「學習任務」試算表的「任務類別」分頁，欄位：類別名稱 / 顏色 / 排序 / 啟用
+// 分頁不存在時自動建立並填入預設類別。任務的「任務類別」欄存類別名稱，空白代表未分類。
+
+const CATEGORY_SHEET_NAME = "任務類別";
+const CATEGORY_HEADER = ["類別名稱", "顏色", "排序", "啟用"];
+const DEFAULT_CATEGORIES = [
+  ["預習", "#2563eb"],
+  ["複習", "#16a34a"],
+  ["作業", "#d97706"],
+  ["考試", "#dc2626"],
+  ["其他", "#6b7280"],
+];
+
+function openCategorySheet() {
+  const file = SpreadsheetApp.openById(TASKS_FILE_ID);
+  let sheet = file.getSheetByName(CATEGORY_SHEET_NAME);
+  if (!sheet) {
+    // 插在最後面，「學習任務」要維持第一個分頁（任務是從第一個分頁讀的）
+    sheet = file.insertSheet(CATEGORY_SHEET_NAME, file.getSheets().length);
+    const rows = [CATEGORY_HEADER].concat(DEFAULT_CATEGORIES.map((c, i) => [c[0], c[1], i + 1, true]));
+    sheet.getRange(1, 1, rows.length, CATEGORY_HEADER.length).setValues(rows);
+  }
+  return sheet;
+}
+
+function readCategories() {
+  return sheetRows(openCategorySheet())
+    .map((r) => ({
+      name: String(r["類別名稱"] || "").trim(),
+      color: String(r["顏色"] || "").trim() || "#6b7280",
+      order: Number(r["排序"]) || 0,
+      enabled: r["啟用"] !== false && String(r["啟用"]).toUpperCase() !== "FALSE",
+    }))
+    .filter((c) => c.name)
+    .sort((a, b) => a.order - b.order);
+}
+
+function getCategories() {
+  return cachedJson("categories", readCategories);
+}
+
+function handleCategories() {
+  return { ok: true, categories: getCategories() };
+}
+
+// 前端送來整份類別清單（依順序），加上這次的改名與刪除；後端檢查後整份覆寫
+function handleSaveCategories(body) {
+  const editor = String(body.editor || "").trim();
+  if (!isParent(editor)) return { ok: false, error: "沒有權限維護類別" };
+
+  const list = Array.isArray(body.categories) ? body.categories : [];
+  const renames = Array.isArray(body.renames) ? body.renames : [];
+  const deleted = Array.isArray(body.deleted) ? body.deleted.map((n) => String(n).trim()) : [];
+
+  const categories = list.map((c) => ({
+    name: String(c.name || "").trim(),
+    color: /^#[0-9a-fA-F]{6}$/.test(String(c.color)) ? String(c.color) : "#6b7280",
+    enabled: c.enabled !== false,
+  }));
+  const names = categories.map((c) => c.name);
+  if (names.some((n) => !n)) return { ok: false, error: "類別名稱不能空白" };
+  if (new Set(names).size !== names.length) return { ok: false, error: "類別名稱不能重複" };
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const taskSheet = openSheet(TASKS_FILE_ID);
+    const header = ensureTaskColumns(taskSheet);
+    const col = header.indexOf("任務類別");
+    const lastRow = taskSheet.getLastRow();
+    const range = lastRow > 1 ? taskSheet.getRange(2, col + 1, lastRow - 1, 1) : null;
+    const values = range ? range.getValues() : [];
+
+    for (const name of deleted) {
+      const inUse = values.filter((v) => String(v[0]).trim() === name).length;
+      if (inUse) return { ok: false, error: `「${name}」還有 ${inUse} 筆任務在使用，請改用停用` };
+    }
+
+    // 改名時，已經用舊名稱的任務一起改成新名稱
+    let renamed = 0;
+    if (range && renames.length) {
+      const map = {};
+      renames.forEach((r) => (map[String(r.from).trim()] = String(r.to).trim()));
+      const next = values.map((v) => {
+        const cur = String(v[0]).trim();
+        if (cur in map) {
+          renamed++;
+          return [map[cur]];
+        }
+        return v;
+      });
+      if (renamed) range.setValues(next);
+    }
+
+    const sheet = openCategorySheet();
+    const rows = [CATEGORY_HEADER].concat(categories.map((c, i) => [c.name, c.color, i + 1, c.enabled]));
+    sheet.clearContents();
+    sheet.getRange(1, 1, rows.length, CATEGORY_HEADER.length).setValues(rows);
+
+    CacheService.getScriptCache().remove("categories");
+    delete requestMemo.categories;
+    return { ok: true, categories: readCategories(), renamed };
   } finally {
     lock.releaseLock();
   }

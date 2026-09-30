@@ -2624,3 +2624,209 @@ body.sheet-open {
   font-size: 0.7rem;
   color: var(--color-text-muted);
 }
+
+/* 任務類別：標籤 */
+
+.cat-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--cat) 40%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--cat) 14%, transparent);
+  color: var(--cat);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.6;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cat-badge {
+    color: color-mix(in srgb, var(--cat) 55%, white);
+  }
+}
+
+/* 任務類別：選擇 */
+
+.cat-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cat-option {
+  padding: 4px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.cat-option:not(.none) {
+  border-color: color-mix(in srgb, var(--cat) 40%, transparent);
+  color: var(--cat);
+}
+
+.cat-option.active {
+  font-weight: 800;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.cat-option.active:not(.none) {
+  background: color-mix(in srgb, var(--cat) 16%, transparent);
+}
+
+.cat-option.none.active {
+  background: var(--color-card-head);
+  color: var(--color-text);
+}
+
+.edit-task-category,
+.modal-category {
+  margin-bottom: 10px;
+}
+
+.manage-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.manage-toolbar .secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 類別設定面板 */
+
+.cat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.cat-row.disabled {
+  opacity: 0.6;
+}
+
+.cat-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cat-color {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--cat);
+  box-shadow: 0 0 0 1px var(--color-border-strong);
+  cursor: pointer;
+}
+
+.cat-name {
+  flex: 1;
+  min-width: 0;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.cat-usage {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.cat-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cat-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.cat-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cat-btn.toggle {
+  margin-left: auto;
+}
+
+.cat-btn.danger:not(:disabled) {
+  color: #dc2626;
+}
+
+.cat-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cat-swatch {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--cat);
+  box-shadow: 0 0 0 1px var(--color-border-strong);
+  cursor: pointer;
+}
+
+.cat-swatch.active {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.cat-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cat-add .student-select {
+  flex: 1;
+  min-width: 0;
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+
+.cat-add .solid-btn {
+  padding: 9px 14px;
+  font-size: 0.9rem;
+}
+
+.sheet.saving .cat-list,
+.sheet.saving .cat-add {
+  opacity: 0.6;
+  pointer-events: none;
+}

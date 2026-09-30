@@ -32,4 +32,6 @@ const Api = {
   reviewTask: (id, decision, reviewer) => apiPost("reviewTask", { id, decision, reviewer }),
   getProgress: (name, role) => apiGet("progress", { name, role }),
   setProgress: (payload) => apiPost("setProgress", payload),
+  getCategories: () => apiGet("categories", {}),
+  saveCategories: (payload) => apiPost("saveCategories", payload),
 };

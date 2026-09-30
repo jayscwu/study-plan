@@ -12,7 +12,7 @@ const TASK_TIME_SLOTS = ["整天", "上午", "下午", "晚上"];
 
 const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
 
-const APP_VERSION = "v3.2";
+const APP_VERSION = "v3.3";
 
 const VIEW_TITLES = {
   overview: "儀表板",
@@ -158,6 +158,8 @@ const el = {
   manageCourseTabs: document.getElementById("manage-course-tabs"),
   manageTasksTree: document.getElementById("manage-tasks-tree"),
 
+  categorySettingsBtn: document.getElementById("category-settings-btn"),
+  modalTaskCategory: document.getElementById("modal-task-category"),
   taskFab: document.getElementById("task-fab"),
   taskModalOverlay: document.getElementById("task-modal-overlay"),
   modalCloseBtn: document.getElementById("modal-close-btn"),
@@ -177,6 +179,8 @@ const el = {
 let session = loadSession();
 let allTasks = [];
 let allCourses = [];
+let allCategories = [];
+let modalCategory = "";
 let learningItemIndex = new Map();
 let progressByKey = new Map();
 let savingItems = new Set();
@@ -413,13 +417,16 @@ function loadData(silent) {
     Api.getCourseUnits(),
     Api.getUsers(),
     Api.getProgress(session.name, session.role),
+    Api.getCategories(),
   ])
-    .then(([tasksRes, courseUnitsRes, usersRes, progressRes]) => {
+    .then(([tasksRes, courseUnitsRes, usersRes, progressRes, categoriesRes]) => {
       if (!tasksRes.ok) throw new Error(tasksRes.error || "讀取任務失敗");
       if (!courseUnitsRes.ok || !courseUnitsRes.courses) throw new Error(courseUnitsRes.error || "讀取課程單元失敗");
       if (!usersRes.ok) throw new Error(usersRes.error || "讀取使用者失敗");
       if (!progressRes.ok) throw new Error(progressRes.error || "讀取上課進度失敗");
       allTasks = tasksRes.tasks;
+      // 類別讀取失敗不影響其他功能，只是標籤顯示成灰色
+      allCategories = categoriesRes && categoriesRes.ok ? categoriesRes.categories : [];
       allCourses = courseUnitsRes.courses;
       buildLearningItemIndex();
       // 背景更新時，保留還在儲存中的項目畫面上的狀態
@@ -1397,7 +1404,7 @@ function buildTaskListItem(t, showCourse) {
   item.innerHTML = `
     <div class="task-list-item-text">
       ${showCourse ? `<div class="task-list-item-course">${escapeHtml(`${t.course}・${taskItemEntry(t) ? taskItemEntry(t).item.name : t.unit}`)}</div>` : ""}
-      <div class="task-list-item-chapter">${escapeHtml(t.task)}</div>
+      <div class="task-list-item-chapter">${categoryBadge(t.category)}${escapeHtml(t.task)}</div>
       ${t.date ? `<div class="task-list-item-type">${escapeHtml(t.date)}</div>` : ""}
     </div>
     <div class="task-list-item-actions">
@@ -1555,6 +1562,7 @@ function buildManageTaskRow(t) {
 
   if (editingTaskId === t.id) {
     row.innerHTML = `
+      <div class="edit-task-category"></div>
       <div class="request-form">
         <input type="text" class="student-select edit-task-name" value="${escapeHtml(t.task)}">
         <input type="date" class="student-select edit-task-date" value="${escapeHtml(t.date || "")}">
@@ -1572,6 +1580,8 @@ function buildManageTaskRow(t) {
     `;
     const saveBtn = row.querySelector('[data-action="save"]');
     row.querySelector(".edit-task-slot").value = t.timeSlot || "整天";
+    let editCategory = t.category || "";
+    row.querySelector(".edit-task-category").appendChild(buildCategoryPicker(editCategory, (name) => (editCategory = name)));
     row.querySelector('[data-action="cancel"]').addEventListener("click", () => {
       editingTaskId = null;
       renderManageTasksList();
@@ -1590,6 +1600,7 @@ function buildManageTaskRow(t) {
         task,
         date: row.querySelector(".edit-task-date").value,
         timeSlot: row.querySelector(".edit-task-slot").value,
+        category: editCategory,
       })
         .then((res) => {
           if (!res.ok) {
@@ -1613,7 +1624,7 @@ function buildManageTaskRow(t) {
 
   row.innerHTML = `
     <div class="task-list-item-text">
-      <div class="task-list-item-type">${escapeHtml(t.task)}</div>
+      <div class="task-list-item-type">${categoryBadge(t.category)}${escapeHtml(t.task)}</div>
       <div class="task-list-item-course">${t.date ? escapeHtml(t.date) : "未排定日期"}</div>
     </div>
     <div class="task-list-item-actions">
@@ -1766,6 +1777,8 @@ function openTaskModal() {
   el.modalTaskName.value = "";
   el.modalTaskDate.value = "";
   el.modalTaskSlot.value = "整天";
+  modalCategory = "";
+  el.modalTaskCategory.replaceChildren(buildCategoryPicker("", (name) => (modalCategory = name)));
   el.modalMessage.classList.add("hidden");
   el.taskModalOverlay.classList.remove("hidden");
   el.modalTaskName.focus();
@@ -1792,6 +1805,7 @@ el.modalAddBtn.addEventListener("click", () => {
     task: el.modalTaskName.value.trim(),
     date: el.modalTaskDate.value,
     timeSlot: el.modalTaskSlot.value,
+    category: modalCategory,
   };
   if (!payload.student || !payload.course || !payload.unit || !payload.task) {
     el.modalMessage.textContent = "請完整填寫學生、課程、單元與任務名稱。";
@@ -1847,6 +1861,7 @@ const ICONS = {
   alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>',
   logout: '<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>',
   accordion: '<rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/>',
   board: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="11" rx="1"/><rect x="17" y="4" width="4" height="14" rx="1"/>',
@@ -2196,7 +2211,7 @@ function closeAssignPanel() {
 }
 
 function newAssignRow() {
-  return { task: "", date: assignCtx.defaultDate, timeSlot: "整天" };
+  return { task: "", date: assignCtx.defaultDate, timeSlot: "整天", category: "" };
 }
 
 function renderAssignPanel() {
@@ -2272,6 +2287,7 @@ function renderAssignPanel() {
         </select>
       </div>
     `;
+    card.querySelector(".assign-row-head").after(buildCategoryPicker(row.category, (name) => (row.category = name)));
     card.querySelector(".assign-task").addEventListener("input", (e) => (row.task = e.target.value));
     card.querySelector(".assign-date").addEventListener("change", (e) => (row.date = e.target.value));
     card.querySelector(".assign-slot").addEventListener("change", (e) => (row.timeSlot = e.target.value));
@@ -2327,6 +2343,7 @@ assignEl.submit.addEventListener("click", () => {
       task: r.task.trim(),
       date: r.date,
       timeSlot: r.timeSlot,
+      category: r.category,
     })),
   })
     .then((res) => {
@@ -2344,6 +2361,246 @@ assignEl.submit.addEventListener("click", () => {
       assignEl.error.classList.remove("hidden");
     });
 });
+
+// ---------- 任務類別 ----------
+
+const CATEGORY_COLORS = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed", "#0d9488", "#db2777", "#6b7280"];
+
+function findCategory(name) {
+  return allCategories.find((c) => c.name === name) || null;
+}
+
+// 任務卡片上的彩色類別標籤；未分類不顯示
+function categoryBadge(name) {
+  if (!name) return "";
+  const c = findCategory(name);
+  const color = c ? c.color : "#6b7280";
+  return `<span class="cat-badge" style="--cat:${escapeHtml(color)}">${escapeHtml(name)}</span>`;
+}
+
+// 類別選擇：未分類＋啟用中的類別；目前選的類別就算被停用也留著
+function buildCategoryPicker(selected, onChange) {
+  const wrap = document.createElement("div");
+  wrap.className = "cat-picker";
+  wrap.setAttribute("role", "radiogroup");
+  wrap.setAttribute("aria-label", "任務類別");
+  const options = [{ name: "", color: "" }].concat(allCategories.filter((c) => c.enabled || c.name === selected));
+  options.forEach((c) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cat-option" + (c.name === selected ? " active" : "") + (c.name ? "" : " none");
+    if (c.color) btn.style.setProperty("--cat", c.color);
+    btn.setAttribute("role", "radio");
+    btn.setAttribute("aria-checked", c.name === selected);
+    btn.textContent = c.name || "未分類";
+    btn.addEventListener("click", () => {
+      wrap.querySelectorAll(".cat-option").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+        b.setAttribute("aria-checked", b === btn);
+      });
+      onChange(c.name);
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
+// ---------- 類別設定面板（家長） ----------
+
+const categoryOverlay = document.createElement("div");
+categoryOverlay.className = "sheet-overlay hidden";
+categoryOverlay.innerHTML = `
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="category-title">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="category-title" class="sheet-title">類別設定</h2>
+      <button class="sheet-close" data-action="close" aria-label="關閉">${iconSvg("x")}</button>
+    </div>
+    <p class="assign-context">停用的類別不會出現在選單中，已經使用的任務照常顯示。</p>
+    <div class="cat-list"></div>
+    <div class="cat-add">
+      <input type="text" class="student-select cat-add-name" placeholder="新類別名稱" maxlength="10">
+      <button class="solid-btn cat-add-btn">＋ 新增類別</button>
+    </div>
+    <p class="login-error cat-error hidden"></p>
+  </div>
+`;
+document.body.appendChild(categoryOverlay);
+
+const catEl = {
+  list: categoryOverlay.querySelector(".cat-list"),
+  addName: categoryOverlay.querySelector(".cat-add-name"),
+  addBtn: categoryOverlay.querySelector(".cat-add-btn"),
+  error: categoryOverlay.querySelector(".cat-error"),
+  sheet: categoryOverlay.querySelector(".sheet"),
+};
+
+let categorySaving = false;
+let colorPickerFor = null;
+
+function openCategoryPanel() {
+  colorPickerFor = null;
+  catEl.error.classList.add("hidden");
+  catEl.addName.value = "";
+  renderCategoryPanel();
+  categoryOverlay.classList.remove("hidden");
+  document.body.classList.add("sheet-open");
+}
+
+function closeCategoryPanel() {
+  if (categorySaving) return;
+  categoryOverlay.classList.add("hidden");
+  document.body.classList.remove("sheet-open");
+}
+
+function categoryUsage(name) {
+  return allTasks.filter((t) => t.category === name).length;
+}
+
+function renderCategoryPanel() {
+  catEl.sheet.classList.toggle("saving", categorySaving);
+  catEl.list.innerHTML = "";
+  allCategories.forEach((c, index) => {
+    const used = categoryUsage(c.name);
+    const row = document.createElement("div");
+    row.className = "cat-row" + (c.enabled ? "" : " disabled");
+    row.innerHTML = `
+      <div class="cat-row-main">
+        <button class="cat-color" style="--cat:${escapeHtml(c.color)}" aria-label="選擇顏色"></button>
+        <input type="text" class="cat-name" value="${escapeHtml(c.name)}" maxlength="10" aria-label="類別名稱">
+        <span class="cat-usage">${used} 筆</span>
+      </div>
+      <div class="cat-row-actions">
+        <button class="cat-btn" data-action="up" ${index === 0 ? "disabled" : ""} aria-label="上移">↑</button>
+        <button class="cat-btn" data-action="down" ${index === allCategories.length - 1 ? "disabled" : ""} aria-label="下移">↓</button>
+        <button class="cat-btn toggle" data-action="toggle">${c.enabled ? "停用" : "啟用"}</button>
+        <button class="cat-btn danger" data-action="delete" ${used ? `disabled title="還有 ${used} 筆任務在使用，請改用停用"` : ""}>刪除</button>
+      </div>
+      ${
+        colorPickerFor === c.name
+          ? `<div class="cat-palette">${CATEGORY_COLORS.map(
+              (color) =>
+                `<button class="cat-swatch${color === c.color ? " active" : ""}" style="--cat:${color}" data-color="${color}" aria-label="${color}"></button>`
+            ).join("")}</div>`
+          : ""
+      }
+    `;
+
+    row.querySelector(".cat-color").addEventListener("click", () => {
+      colorPickerFor = colorPickerFor === c.name ? null : c.name;
+      renderCategoryPanel();
+    });
+    row.querySelectorAll(".cat-swatch").forEach((sw) =>
+      sw.addEventListener("click", () => {
+        colorPickerFor = null;
+        saveCategoryList(allCategories.map((x) => (x === c ? { ...x, color: sw.dataset.color } : x)), {}, "已更新顏色");
+      })
+    );
+
+    const nameInput = row.querySelector(".cat-name");
+    const commitName = () => {
+      const next = nameInput.value.trim();
+      if (next === c.name) return;
+      if (!next || allCategories.some((x) => x !== c && x.name === next)) {
+        nameInput.value = c.name;
+        showCategoryError(next ? "類別名稱不能重複" : "類別名稱不能空白");
+        return;
+      }
+      saveCategoryList(
+        allCategories.map((x) => (x === c ? { ...x, name: next } : x)),
+        { renames: [{ from: c.name, to: next }] },
+        used ? `已改名，${used} 筆任務一起更新` : "已改名"
+      );
+    };
+    nameInput.addEventListener("change", commitName);
+    nameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") nameInput.blur();
+    });
+
+    row.querySelectorAll(".cat-btn").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const list = [...allCategories];
+        const action = btn.dataset.action;
+        if (action === "up" || action === "down") {
+          const to = index + (action === "up" ? -1 : 1);
+          [list[index], list[to]] = [list[to], list[index]];
+          saveCategoryList(list, {}, "已調整順序");
+        } else if (action === "toggle") {
+          list[index] = { ...c, enabled: !c.enabled };
+          saveCategoryList(list, {}, c.enabled ? `已停用「${c.name}」` : `已啟用「${c.name}」`);
+        } else if (action === "delete") {
+          if (!confirm(`確定要刪除類別「${c.name}」嗎？`)) return;
+          list.splice(index, 1);
+          saveCategoryList(list, { deleted: [c.name] }, `已刪除「${c.name}」`);
+        }
+      })
+    );
+
+    catEl.list.appendChild(row);
+  });
+}
+
+function showCategoryError(message) {
+  catEl.error.textContent = message;
+  catEl.error.classList.remove("hidden");
+}
+
+function saveCategoryList(list, extra, successMessage) {
+  if (categorySaving) return;
+  categorySaving = true;
+  catEl.error.classList.add("hidden");
+  const renames = (extra && extra.renames) || [];
+  // 先更新畫面，存檔失敗再還原
+  const prevCategories = allCategories;
+  allCategories = list;
+  renderCategoryPanel();
+
+  Api.saveCategories({
+    editor: session.name,
+    categories: list.map((c) => ({ name: c.name, color: c.color, enabled: c.enabled })),
+    renames,
+    deleted: (extra && extra.deleted) || [],
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(res.error || "儲存失敗");
+      allCategories = res.categories;
+      // 改名後，畫面上的任務也跟著換成新名稱
+      renames.forEach((r) => allTasks.forEach((t) => t.category === r.from && (t.category = r.to)));
+      showToast(successMessage, "success");
+    })
+    .catch((err) => {
+      allCategories = prevCategories;
+      showCategoryError(`儲存失敗（${err.message}）`);
+    })
+    .finally(() => {
+      categorySaving = false;
+      renderCategoryPanel();
+      renderAll();
+    });
+}
+
+catEl.addBtn.addEventListener("click", () => {
+  const name = catEl.addName.value.trim();
+  if (!name) return showCategoryError("請輸入類別名稱");
+  if (allCategories.some((c) => c.name === name)) return showCategoryError("類別名稱不能重複");
+  // 新類別預設用還沒被用過的顏色
+  const usedColors = new Set(allCategories.map((c) => c.color));
+  const color = CATEGORY_COLORS.find((c) => !usedColors.has(c)) || CATEGORY_COLORS[allCategories.length % CATEGORY_COLORS.length];
+  catEl.addName.value = "";
+  saveCategoryList([...allCategories, { name, color, enabled: true }], {}, `已新增「${name}」`);
+});
+catEl.addName.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") catEl.addBtn.click();
+});
+
+categoryOverlay.addEventListener("click", (e) => {
+  if (e.target === categoryOverlay || e.target.closest('[data-action="close"]')) closeCategoryPanel();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !categoryOverlay.classList.contains("hidden")) closeCategoryPanel();
+});
+
+el.categorySettingsBtn.addEventListener("click", openCategoryPanel);
 
 fillIcons();
 applyProgressMode();

@@ -267,6 +267,9 @@
 
       <!-- 任務管理頁籤（家長專用） -->
       <section id="view-manage" class="hidden">
+        <div class="manage-toolbar">
+          <button id="category-settings-btn" class="secondary-btn"><span data-icon="tag"></span>類別設定</button>
+        </div>
         <div id="manage-course-tabs" class="course-tabs"></div>
         <section id="manage-tasks-tree"></section>
       </section>
@@ -325,6 +328,7 @@
           <select id="modal-course-select" class="student-select"></select>
           <select id="modal-unit-select" class="student-select"></select>
         </div>
+        <div id="modal-task-category" class="modal-category"></div>
         <div class="request-form">
           <input type="text" id="modal-task-name" class="student-select" placeholder="任務名稱（如：練習本、練習卷）">
           <input type="date" id="modal-task-date" class="student-select">
